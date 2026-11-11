@@ -1,0 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Great+Vibes&family=Nunito+Sans:ital,opsz,wght@0,6..12,400;0,6..12,500;0,6..12,600;0,6..12,700;1,6..12,400&display=swap');
+@import 'tailwindcss';
+
+:root {
+  /* Brand Colors */
+  --color-primary: #6D4AE0;
+  --color-primary-hover: #5A3AC7;
+  --color-primary-dark: #3F2A9E;
+  --color-primary-light: #A78BFA;
+  --color-primary-tint: #F3EFFF;
+  --color-orange: #F59E3B;
+  --color-gold: #F5B82E;
+  --color-ink: #1E1B2E;
+  --color-slate: #5F5B75;
+  --color-border: #E6E1F5;
+  --color-page: #FAF8FF;
+
+  /* Semantic Status Colors */
+  --color-success: #16A34A;
+  --color-warning: #F59E0B;
+  --color-danger: #DC2626;
+  --color-info: #2563EB;
+
+  /* Typography */
+  --font-display: 'Baloo 2', cursive, sans-serif;
+  --font-sans: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-script: 'Great Vibes', cursive, serif;
+
+  /* Radii */
+  --radius-card: 12px;
+  --radius-control: 10px;
+  --radius-pill: 9999px;
+
+  /* Soft Purple-Tinted Shadows */
+  --shadow-card: 0 4px 20px -2px rgba(109, 74, 224, 0.08), 0 2px 6px -1px rgba(30, 27, 46, 0.04);
+  --shadow-card-hover: 0 12px 28px -4px rgba(109, 74, 224, 0.16), 0 4px 10px -2px rgba(30, 27, 46, 0.06);
+  --shadow-dropdown: 0 14px 34px -4px rgba(63, 42, 158, 0.18), 0 4px 12px -2px rgba(30, 27, 46, 0.08);
+  --shadow-navbar: 0 6px 24px -4px rgba(109, 74, 224, 0.12);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-page);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-size: 16px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: 40px;
+    line-height: 1.18;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: 32px;
+    line-height: 1.22;
+    font-weight: 700;
+  }
+
+  h3 {
+    font-size: 24px;
+    line-height: 1.28;
+    font-weight: 600;
+  }
+}
+
+/* Signature Die-Cut Sticker Look (white outline + thin dashed stroke)
+   Used sparingly on achievement badges and "Featured" tags only */
+.sticker-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 9999px;
+  border: 1.5px dashed currentColor;
+  box-shadow: 0 0 0 3px #FFFFFF, 0 4px 12px rgba(109, 74, 224, 0.22);
+}
+
+.shadow-purple-sm {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-purple-md {
+  box-shadow: var(--shadow-card-hover);
+}
+
+.shadow-purple-lg {
+  box-shadow: var(--shadow-dropdown);
+}
+
+.shadow-purple-nav {
+  box-shadow: var(--shadow-navbar);
+}
+
+.font-script {
+  font-family: var(--font-script);
+}
+
+@keyframes heroEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-hero-entrance {
+  animation: heroEntrance 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes errorShake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  20%, 60% {
+    transform: translateX(-7px);
+  }
+  40%, 80% {
+    transform: translateX(7px);
+  }
+}
+
+.animate-shake {
+  animation: errorShake 0.42s ease-in-out;
+}
