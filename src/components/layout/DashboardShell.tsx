@@ -494,7 +494,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
         </header>
 
         {/* Main Workspace Container (max-w-[1200px] 8px grid) */}
-        <main className="flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8">
+        <main id="main-content" tabIndex={-1} className="flex-1 w-full max-w-[1200px] mx-auto px-4 sm:px-6 py-8 focus:outline-none">
           {children}
         </main>
       </div>

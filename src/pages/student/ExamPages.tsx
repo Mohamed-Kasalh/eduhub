@@ -379,7 +379,7 @@ export const ExamPage: React.FC = () => {
           </div>
         </header>
 
-        <main className="flex-1 max-w-[1000px] w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
+        <main id="main-content" tabIndex={-1} className="flex-1 max-w-[1000px] w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 focus:outline-none">
           <Breadcrumbs
             items={[
               { label: 'My courses', to: '/student/courses' },
@@ -682,7 +682,7 @@ export const ExamPage: React.FC = () => {
       </header>
 
       {/* MAIN FOCUSED EXAM WORKSPACE */}
-      <main className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start focus:outline-none">
         {/* LEFT 8 COLS: QUESTION CARD */}
         <div className="lg:col-span-8 space-y-6">
           {/* Quick Question Type Switcher Bar so reviewer can jump directly to Single, Multiple (Q7), or True/False (Q3) */}

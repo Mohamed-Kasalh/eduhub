@@ -10,7 +10,9 @@ export const PublicShell: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF8FF] text-[#1E1B2E]">
       <PublicNavbar />
-      <main className="flex-1 w-full">{children}</main>
+      <main id="main-content" tabIndex={-1} className="flex-1 w-full focus:outline-none">
+        {children}
+      </main>
       <PublicFooter />
     </div>
   );

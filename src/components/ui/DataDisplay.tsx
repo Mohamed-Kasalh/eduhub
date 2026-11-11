@@ -14,6 +14,7 @@ export interface ProgressBarProps {
   value: number;
   label?: string;
   showValue?: boolean;
+  showPercent?: boolean;
   size?: 'sm' | 'md' | 'lg';
   color?: 'primary' | 'success' | 'orange' | 'gold' | 'danger';
   forceState?: ComponentVisualState;
@@ -24,6 +25,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   value,
   label,
   showValue = true,
+  showPercent,
   size = 'md',
   color = 'primary',
   forceState,
@@ -35,6 +37,8 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   const isDisabled = forceState === 'disabled';
   const isHovered = forceState === 'hover';
   const isFocused = forceState === 'focus';
+  const showHeaderValue = showPercent === undefined ? showValue : false;
+  const showInlinePercent = showPercent === true;
 
   const heightMap = {
     sm: 'h-2',
@@ -50,37 +54,50 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     danger: 'bg-[#DC2626]',
   };
 
+  const percentLabel = isLoading ? 'Syncing...' : isError ? 'Sync failed' : `${clamped}%`;
+
   return (
     <div
       className={`flex flex-col gap-1.5 ${isDisabled ? 'opacity-50' : ''} ${
         isFocused ? 'ring-2 ring-[#A78BFA] rounded-[8px] p-1' : ''
       } ${className}`}
     >
-      {(label || showValue) && (
+      {(label || showHeaderValue) && (
         <div className="flex items-center justify-between text-[14px]">
           {label && <span className="font-semibold text-[#1E1B2E]">{label}</span>}
-          {showValue && (
+          {showHeaderValue && (
             <span
               className={`font-display font-bold ${
                 isError ? 'text-[#DC2626]' : 'text-[#6D4AE0]'
               }`}
             >
-              {isLoading ? 'Syncing...' : isError ? 'Sync failed' : `${clamped}%`}
+              {percentLabel}
             </span>
           )}
         </div>
       )}
-      <div
-        className={`w-full bg-[#F3EFFF] rounded-full overflow-hidden border border-[#E6E1F5] ${
-          heightMap[size]
-        } ${isHovered ? 'shadow-purple-sm' : ''}`}
-      >
+      <div className={showInlinePercent ? 'flex items-center gap-2.5' : undefined}>
         <div
-          className={`h-full rounded-full transition-all duration-300 ${
-            isError ? 'bg-[#DC2626]' : fillMap[color]
-          } ${isLoading ? 'animate-pulse w-2/3' : ''}`}
-          style={!isLoading ? { width: `${clamped}%` } : undefined}
-        />
+          className={`w-full bg-[#F3EFFF] rounded-full overflow-hidden border border-[#E6E1F5] ${
+            heightMap[size]
+          } ${isHovered ? 'shadow-purple-sm' : ''}`}
+        >
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${
+              isError ? 'bg-[#DC2626]' : fillMap[color]
+            } ${isLoading ? 'animate-pulse w-2/3' : ''}`}
+            style={!isLoading ? { width: `${clamped}%` } : undefined}
+          />
+        </div>
+        {showInlinePercent && (
+          <span
+            className={`font-display font-bold text-[14px] shrink-0 ${
+              isError ? 'text-[#DC2626]' : 'text-[#6D4AE0]'
+            }`}
+          >
+            {percentLabel}
+          </span>
+        )}
       </div>
       {isError && (
         <span className="text-[12px] text-[#DC2626]">

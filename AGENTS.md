@@ -1,37 +1,32 @@
-# figma-make-app
+# EduHub Frontend
 
-React + Vite + Tailwind CSS project running inside Figma Make.
+Role-based e-learning platform built with React 19, TypeScript, Vite 8, Tailwind CSS v4, react-router 8, and lucide-react.
 
-## Development Server
+## Commands
 
-A Vite development server is **already running** on `$PORT` (default 8443). You don't need to start it manually.
-
-- Preview URL: The user can access the running app through the preview panel
-- Hot reload: Changes to source files are reflected immediately
+- `pnpm install` — install dependencies
+- `pnpm dev` — start local Vite development server
+- `pnpm exec tsc --noEmit` — run TypeScript type-checking
+- `pnpm build` — build production bundle into `dist/`
+- `pnpm preview` — preview production build locally
+- `pnpm format` — format source files with `oxfmt`
 
 ## Project Structure
 
-This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
+- `index.html` — HTML shell mounting `src/main.tsx` into `#root`
+- `src/main.tsx` — React entrypoint loading `src/index.css` and `src/App.tsx`
+- `src/App.tsx` — wraps `RouterProvider` with `AppProvider`
+- `src/routes.tsx` — route tree (`PublicShell`, `DashboardShell`, `AdaptiveShell`, `RoleGuard`)
+- `src/context/AppContext.tsx` — client-side state, mock data wiring, role preview, toast queue
+- `src/data/` — mock datasets (`mockData.ts`, `studentLearningData.ts`, `examAndCertData.ts`, `instructorMockData.ts`, `adminSupervisorMockData.ts`)
+- `src/components/ui/` — shared UI primitives (`Button`, `Modal`, `Drawer`, `Tabs`, `DataTable`, `Pagination`, inputs, badges, progress, etc.)
+- `src/components/layout/` — shells (`DashboardShell`, `PublicNavbar`, `PublicFooter`, `RoleGuard`, `PreviewSwitcher`)
+- `src/pages/` — pages grouped by `public/`, `auth/`, `student/`, `instructor/`, `admin/`, `supervisor/`, `shared/`
+- `public/eduhub-logo.png`, `public/favicon.png` — static brand assets
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
-- `.mise.toml` - Toolchain versions for Node.js and pnpm
+## Conventions
 
-## Dependencies
-
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
-
-## Styling
-
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import 'tailwindcss';`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This scaffold does not need a Tailwind config file or PostCSS config.
-
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
-
-Tailwind emits utility classes in `@layer utilities`, and CSS outside any cascade layer overrides every layer regardless of specificity. Put global element styles, such as resets and defaults for `body`, headings, `button`, or `input`, inside `@layer base { ... }` so utility classes on those elements still apply. Tailwind's Preflight already applies `box-sizing: border-box`, removes default margins, and sets `font: inherit` on form controls, so do not repeat those rules.
+- Use the `@` path alias for `src/` imports where appropriate (configured in `tsconfig.json` and `vite.config.ts`).
+- Styling uses Tailwind CSS v4 (`@import 'tailwindcss';` in `src/index.css`) and CSS custom properties (`--color-primary: #6D4AE0`, `Baloo 2` display, `Nunito Sans` body).
+- Strict TypeScript: no `any`, `@ts-ignore`, or `eslint-disable`.
+- Role views (`guest`, `student`, `instructor`, `admin`, `supervisor`) can be switched via the bottom-left "Preview as" widget.

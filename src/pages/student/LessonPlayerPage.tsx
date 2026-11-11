@@ -639,7 +639,7 @@ export const LessonPlayerPage: React.FC = () => {
       {/* MAIN FOCUSED BODY: Left Video + Tabs Column & Right "Course content" Sidebar */}
       <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto">
         {/* Main Video & Tabs Column */}
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6 focus:outline-none">
           {/* CUSTOM VIDEO PLAYER */}
           <div
             ref={playerContainerRef}

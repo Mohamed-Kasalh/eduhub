@@ -60,6 +60,12 @@ const RootLayout: React.FC = () => {
   const { toasts, removeToast } = useApp();
   return (
     <>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:px-4 focus:py-2.5 focus:rounded-[10px] focus:bg-[#1E1B2E] focus:text-white focus:font-semibold focus:text-[14px] focus:shadow-purple-lg focus:outline-none focus:ring-2 focus:ring-[#A78BFA]"
+      >
+        Skip to content
+      </a>
       <ScrollRestoration />
       <Outlet />
       <ToastViewport toasts={toasts} onDismiss={removeToast} />
