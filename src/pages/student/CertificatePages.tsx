@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
+import { toPng } from 'html-to-image';
 import {
   Award,
   CheckCircle2,
@@ -105,12 +106,18 @@ export const CertificateDetailPage: React.FC = () => {
   const {
     certificates,
     courses,
+    profiles,
     getCourseProgressStats,
     examBestScores,
     completeAllCourseLessons,
     setCourseExamScore,
     addToast,
   } = useApp();
+
+  const certRef = useRef<HTMLDivElement | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+  const [isDownloadingPng, setIsDownloadingPng] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const cert: CertificateRecord = useMemo(() => {
     return (
@@ -121,6 +128,9 @@ export const CertificateDetailPage: React.FC = () => {
       ) || certificates[0]
     );
   }, [certificates, id]);
+
+  const studentDisplayName =
+    cert.studentId === profiles.student.id ? profiles.student.name : cert.studentName;
 
   const course = useMemo(
     () => courses.find((c) => c.id === cert.courseId) || courses[0],
@@ -148,6 +158,25 @@ export const CertificateDetailPage: React.FC = () => {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (searchParams.get('action') !== 'print' || viewMode !== 'preview') return;
+    const timer = window.setTimeout(() => {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+      window.print();
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [searchParams, viewMode, setSearchParams]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleGenerateCertificate = () => {
     setIsGenerating(true);
     setTimeout(() => {
@@ -162,15 +191,128 @@ export const CertificateDetailPage: React.FC = () => {
     }, 2000);
   };
 
-  const verifyUrl = `https://eduhub.com/verify/${cert.verificationCode}`;
+  const verifyUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/verify/${cert.verificationCode}`
+      : `https://eduhub.com/verify/${cert.verificationCode}`;
 
-  const handleCopyVerifyLink = () => {
-    navigator.clipboard?.writeText(verifyUrl).catch(() => {});
+  const handlePrintPdf = () => {
+    window.print();
     addToast({
-      title: 'Verification URL copied',
-      message: `${verifyUrl} copied to clipboard.`,
+      title: 'Print dialog opened',
+      message: `Select "Save as PDF" (A4 Landscape) to save ${cert.verificationCode}.pdf.`,
       variant: 'info',
     });
+  };
+
+  const handleDownloadPng = async () => {
+    if (!certRef.current || isDownloadingPng) return;
+    setIsDownloadingPng(true);
+    try {
+      const dataUrl = await toPng(certRef.current, {
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+      });
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.download = `${cert.verificationCode}-2x.png`;
+      downloadAnchor.href = dataUrl;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      document.body.removeChild(downloadAnchor);
+      addToast({
+        title: 'Certificate PNG saved',
+        message: `${cert.verificationCode}-2x.png downloaded at 2x resolution.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      const reason =
+        err instanceof Error ? err.message : 'Unable to export certificate image.';
+      addToast({
+        title: 'PNG download failed',
+        message: reason,
+        variant: 'danger',
+      });
+    } finally {
+      setIsDownloadingPng(false);
+    }
+  };
+
+  const handleShareLinkedIn = () => {
+    const parsedDate = new Date(cert.issuedAt);
+    const params = new URLSearchParams({
+      startTask: 'CERTIFICATION_NAME',
+      name: cert.courseTitle,
+      organizationName: 'EduHub',
+      certId: cert.verificationCode,
+      certUrl: verifyUrl,
+    });
+    if (!Number.isNaN(parsedDate.getTime())) {
+      params.set('issueYear', String(parsedDate.getFullYear()));
+      params.set('issueMonth', String(parsedDate.getMonth() + 1));
+    }
+    const linkedInUrl = `https://www.linkedin.com/profile/add?${params.toString()}`;
+    const opened = window.open(linkedInUrl, '_blank', 'noopener,noreferrer');
+    if (opened) {
+      addToast({
+        title: 'LinkedIn Add to profile opened',
+        message: `Opened LinkedIn with credential ID ${cert.verificationCode}.`,
+        variant: 'info',
+      });
+    } else {
+      addToast({
+        title: 'Popup blocked',
+        message: 'Allow popups for this site to open LinkedIn Add to profile.',
+        variant: 'warning',
+      });
+    }
+  };
+
+  const handleCopyVerifyLink = async () => {
+    let success = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(verifyUrl);
+        success = true;
+      }
+    } catch {
+      success = false;
+    }
+
+    if (!success) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = verifyUrl;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } catch {
+        success = false;
+      }
+    }
+
+    if (success) {
+      setCopiedLink(true);
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => setCopiedLink(false), 2500);
+      addToast({
+        title: 'Verification link copied',
+        message: `${verifyUrl} copied to clipboard.`,
+        variant: 'success',
+      });
+    } else {
+      addToast({
+        title: 'Copy failed',
+        message: 'Unable to copy automatically. Please copy the verification link manually.',
+        variant: 'danger',
+      });
+    }
   };
 
   return (
@@ -422,13 +564,7 @@ export const CertificateDetailPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 leftIcon={<Download className="w-4 h-4" />}
-                onClick={() =>
-                  addToast({
-                    title: 'Downloading PDF certificate',
-                    message: `${cert.verificationCode}-A4-Landscape.pdf saved.`,
-                    variant: 'success',
-                  })
-                }
+                onClick={handlePrintPdf}
               >
                 Download PDF
               </Button>
@@ -436,29 +572,19 @@ export const CertificateDetailPage: React.FC = () => {
               <Button
                 variant="secondary"
                 size="sm"
+                loading={isDownloadingPng}
+                disabled={isDownloadingPng}
                 leftIcon={<ImageIcon className="w-4 h-4" />}
-                onClick={() =>
-                  addToast({
-                    title: 'Downloading high-res PNG',
-                    message: `${cert.verificationCode}-300dpi.png saved.`,
-                    variant: 'success',
-                  })
-                }
+                onClick={handleDownloadPng}
               >
-                Download PNG
+                {isDownloadingPng ? 'Rendering PNG...' : 'Download PNG'}
               </Button>
 
               <Button
                 variant="secondary"
                 size="sm"
                 leftIcon={<Share2 className="w-4 h-4" />}
-                onClick={() =>
-                  addToast({
-                    title: 'Ready to share on LinkedIn',
-                    message: `Credential ${cert.verificationCode} formatted for your LinkedIn Licenses & Certifications.`,
-                    variant: 'info',
-                  })
-                }
+                onClick={handleShareLinkedIn}
               >
                 Share on LinkedIn
               </Button>
@@ -467,10 +593,16 @@ export const CertificateDetailPage: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className="border border-[#E6E1F5]"
-                leftIcon={<Copy className="w-4 h-4" />}
+                leftIcon={
+                  copiedLink ? (
+                    <Check className="w-4 h-4 text-[#16A34A]" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )
+                }
                 onClick={handleCopyVerifyLink}
               >
-                Copy link
+                {copiedLink ? 'Copied' : 'Copy link'}
               </Button>
 
               <Link to={`/student/progress/${course.id}`}>
@@ -486,8 +618,11 @@ export const CertificateDetailPage: React.FC = () => {
           </div>
 
           {/* LANDSCAPE A4 CERTIFICATE CANVAS (Scales cleanly on 1440 / 768 / 375 screens, strictly white background) */}
-          <div className="max-w-[1040px] mx-auto">
-            <div className="relative rounded-[16px] bg-white p-3 sm:p-5 shadow-purple-lg border-4 border-[#6D4AE0]">
+          <div id="certificate-print-area" className="max-w-[1040px] mx-auto">
+            <div
+              ref={certRef}
+              className="relative rounded-[16px] bg-white p-3 sm:p-5 shadow-purple-lg border-4 border-[#6D4AE0]"
+            >
               {/* Ornate Purple & Gold Double Frame with Corner Flourishes */}
               <div className="relative rounded-[10px] bg-white border-2 border-[#F5B82E] p-5 sm:p-10 lg:p-12 overflow-hidden">
                 {/* 4 Ornate Corner Accents */}
@@ -531,7 +666,7 @@ export const CertificateDetailPage: React.FC = () => {
                   {/* 3. Student Full Name in Large Script Font */}
                   <div className="py-1 sm:py-2 border-b-2 border-[#F5B82E]/60 px-8 sm:px-16">
                     <p className="font-script text-[44px] sm:text-[60px] lg:text-[68px] text-[#3F2A9E] leading-none select-all">
-                      {cert.studentName}
+                      {studentDisplayName}
                     </p>
                   </div>
 
@@ -615,7 +750,8 @@ export const CertificateDetailPage: React.FC = () => {
 // empty state with the cat mascot + locked course card explaining what is missing.
 // ============================================================================
 export const CertificatesListPage: React.FC = () => {
-  const { certificates, courses, addToast } = useApp();
+  const { certificates, courses, profiles } = useApp();
+  const navigate = useNavigate();
   const [previewEmpty, setPreviewEmpty] = useState(false);
 
   const myCertificates = useMemo(
@@ -688,7 +824,9 @@ export const CertificatesListPage: React.FC = () => {
                       Certificate of Completion
                     </p>
                     <p className="font-script text-[24px] text-[#3F2A9E] leading-none">
-                      {cert.studentName}
+                      {cert.studentId === profiles.student.id
+                        ? profiles.student.name
+                        : cert.studentName}
                     </p>
                     <p className="font-display font-bold text-[12px] text-[#6D4AE0] truncate">
                       {cert.courseTitle}
@@ -732,13 +870,7 @@ export const CertificatesListPage: React.FC = () => {
                     variant="secondary"
                     size="sm"
                     leftIcon={<Download className="w-3.5 h-3.5" />}
-                    onClick={() =>
-                      addToast({
-                        title: 'Certificate PDF downloaded',
-                        message: `${cert.verificationCode}.pdf saved to your device.`,
-                        variant: 'success',
-                      })
-                    }
+                    onClick={() => navigate(`/certificates/${cert.id}?action=print`)}
                   >
                     Download
                   </Button>
@@ -808,7 +940,7 @@ export const CertificatesListPage: React.FC = () => {
 // ============================================================================
 export const VerifyCertificatePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { certificates } = useApp();
+  const { certificates, profiles } = useApp();
 
   const [inputCode, setInputCode] = useState<string>(() =>
     id && id !== ':id' ? id : 'EDU-2026-000123'
@@ -917,28 +1049,65 @@ export const VerifyCertificatePage: React.FC = () => {
 
         {/* RESULT STATE 1: VALID STATE (Green check, holder, course, issue date, instructor) */}
         {matchedCert ? (
-          <div className="rounded-[12px] bg-[#16A34A]/6 border-2 border-[#16A34A]/35 p-6 space-y-5">
-            <div className="flex flex-col sm:flex-row items-center gap-4 border-b border-[#16A34A]/20 pb-4">
-              <div className="w-14 h-14 rounded-full bg-[#16A34A] text-white flex items-center justify-center shrink-0 shadow-md">
-                <CheckCircle2 className="w-8 h-8" />
+          <div
+            className={`rounded-[12px] p-6 space-y-5 border-2 ${
+              matchedCert.status === 'Revoked'
+                ? 'bg-[#FEF2F2] border-[#DC2626]/40'
+                : 'bg-[#16A34A]/6 border-[#16A34A]/35'
+            }`}
+          >
+            <div
+              className={`flex flex-col sm:flex-row items-center gap-4 border-b pb-4 ${
+                matchedCert.status === 'Revoked'
+                  ? 'border-[#DC2626]/20'
+                  : 'border-[#16A34A]/20'
+              }`}
+            >
+              <div
+                className={`w-14 h-14 rounded-full text-white flex items-center justify-center shrink-0 shadow-md ${
+                  matchedCert.status === 'Revoked' ? 'bg-[#DC2626]' : 'bg-[#16A34A]'
+                }`}
+              >
+                {matchedCert.status === 'Revoked' ? (
+                  <XCircle className="w-8 h-8" />
+                ) : (
+                  <CheckCircle2 className="w-8 h-8" />
+                )}
               </div>
               <div className="text-center sm:text-left flex-1">
-                <StatusChip label="Valid & Active Credential" variant="success" />
+                <StatusChip
+                  label={
+                    matchedCert.status === 'Revoked'
+                      ? 'Revoked Credential'
+                      : 'Valid & Active Credential'
+                  }
+                  variant={matchedCert.status === 'Revoked' ? 'danger' : 'success'}
+                />
                 <h2 className="text-[24px] font-display font-bold text-[#1E1B2E] mt-1">
-                  Certificate verified
+                  {matchedCert.status === 'Revoked'
+                    ? 'Certificate revoked'
+                    : 'Certificate verified'}
                 </h2>
                 <p className="text-[13px] text-[#5F5B75]">
-                  This certificate was officially issued by EduHub and is in good standing.
+                  {matchedCert.status === 'Revoked'
+                    ? 'This certificate has been revoked by an administrator and is no longer valid.'
+                    : 'This certificate was officially issued by EduHub and is in good standing.'}
                 </p>
               </div>
-              <CatMascot size="sm" mood="success" className="hidden sm:block" />
+              <CatMascot
+                size="sm"
+                mood={matchedCert.status === 'Revoked' ? '404' : 'success'}
+                className="hidden sm:block"
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[14px]">
               <div className="p-3.5 rounded-[10px] bg-white border border-[#E6E1F5]">
                 <p className="text-[12px] text-[#5F5B75]">Certificate holder</p>
                 <p className="font-display font-bold text-[20px] text-[#1E1B2E]">
-                  {matchedCert.studentName}
+                  {matchedCert.studentId === profiles.student.id
+                    ? profiles.student.name
+                    : matchedCert.studentName}
                 </p>
               </div>
               <div className="p-3.5 rounded-[10px] bg-white border border-[#E6E1F5]">
