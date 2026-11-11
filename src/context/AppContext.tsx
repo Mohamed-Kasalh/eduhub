@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import {
   UserRole,
   UserProfile,
@@ -47,10 +47,61 @@ export interface ToastMessage {
   variant: ToastVariant;
 }
 
+type RoleProfileMap = Record<Exclude<UserRole, 'guest'>, UserProfile>;
+
+const PROFILES_STORAGE_KEY = 'eduhub_user_profiles_v1';
+
+function loadInitialProfiles(): RoleProfileMap {
+  const defaults: RoleProfileMap = {
+    student: { ...ROLE_USERS.student },
+    instructor: { ...ROLE_USERS.instructor },
+    admin: { ...ROLE_USERS.admin },
+    supervisor: { ...ROLE_USERS.supervisor },
+  };
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return defaults;
+    }
+    const raw = window.localStorage.getItem(PROFILES_STORAGE_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Partial<Record<Exclude<UserRole, 'guest'>, Partial<UserProfile>>>;
+    (['student', 'instructor', 'admin', 'supervisor'] as const).forEach((r) => {
+      const saved = parsed?.[r];
+      if (saved && typeof saved === 'object') {
+        defaults[r] = {
+          ...defaults[r],
+          ...saved,
+          links: {
+            ...defaults[r].links,
+            ...(saved.links ?? {}),
+          },
+          notificationPreferences: saved.notificationPreferences
+            ? { ...defaults[r].notificationPreferences, ...saved.notificationPreferences }
+            : defaults[r].notificationPreferences,
+        };
+      }
+    });
+    return defaults;
+  } catch {
+    return defaults;
+  }
+}
+
+function persistProfiles(profiles: RoleProfileMap): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    window.localStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+  } catch {
+    // Ignore storage quota or blocked storage errors gracefully.
+  }
+}
+
 interface AppContextValue {
   role: UserRole;
   setRole: (role: UserRole) => void;
+  profiles: RoleProfileMap;
   currentUser: UserProfile | null;
+  updateCurrentUser: (patch: Partial<UserProfile>) => void;
   getDashboardPath: (r?: UserRole) => string;
   courses: Course[];
   setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
@@ -68,6 +119,8 @@ interface AppContextValue {
   setCertificates: React.Dispatch<React.SetStateAction<CertificateRecord[]>>;
   notifications: NotificationItem[];
   markNotificationRead: (id: string) => void;
+  toggleNotificationRead: (id: string) => void;
+  deleteNotification: (id: string) => void;
   markAllNotificationsRead: () => void;
   reports: ModerationReport[];
   setReports: React.Dispatch<React.SetStateAction<ModerationReport[]>>;
@@ -126,6 +179,7 @@ export function getRoleDashboardPath(role: UserRole): string {
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [role, setRoleState] = useState<UserRole>('student');
+  const [profiles, setProfiles] = useState<RoleProfileMap>(loadInitialProfiles);
   const [courses, setCourses] = useState<Course[]>(COURSES);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [lessons, setLessons] = useState<Lesson[]>(LESSONS);
@@ -133,9 +187,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [exams, setExams] = useState<ExamConfig[]>(EXAMS);
   const [questions, setQuestions] = useState<ExamQuestion[]>(EXAM_QUESTIONS);
   const [certificates, setCertificates] = useState<CertificateRecord[]>(CERTIFICATES);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(NOTIFICATIONS);
+  const [allNotifications, setAllNotifications] = useState<NotificationItem[]>(NOTIFICATIONS);
   const [reports, setReports] = useState<ModerationReport[]>(MODERATION_REPORTS);
-  const [users, setUsers] = useState<UserProfile[]>(ALL_USERS);
+  const [users, setUsers] = useState<UserProfile[]>(() => {
+    const initialProfiles = loadInitialProfiles();
+    return ALL_USERS.map((u) => {
+      const match = Object.values(initialProfiles).find((p) => p.id === u.id);
+      return match ?? u;
+    });
+  });
   const [wishlistIds, setWishlistIds] = useState<string[]>(['course-2', 'course-6']);
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(
     ['course-1', 'course-2', 'course-3', 'course-4', 'course-5', 'course-9']
@@ -160,16 +220,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const addToast = useCallback(
-    (toast: Omit<ToastMessage, 'id'>) => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      setToasts((prev) => [...prev, { ...toast, id }]);
-      setTimeout(() => {
-        removeToast(id);
-      }, 4200);
-    },
-    [removeToast]
-  );
+  const addToast = useCallback((toast: Omit<ToastMessage, 'id'>) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setToasts((prev) => [...prev, { ...toast, id }]);
+  }, []);
 
   const setRole = useCallback(
     (nextRole: UserRole) => {
@@ -177,23 +231,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const label =
         nextRole === 'guest'
           ? 'Guest visitor'
-          : `${ROLE_USERS[nextRole].name} (${nextRole.charAt(0).toUpperCase() + nextRole.slice(1)})`;
+          : `${profiles[nextRole].name} (${nextRole.charAt(0).toUpperCase() + nextRole.slice(1)})`;
       addToast({
         title: `Switched view to ${label}`,
         message: 'Sidebar navigation and route permissions updated immediately.',
         variant: 'info',
       });
     },
-    [addToast]
+    [addToast, profiles]
+  );
+
+  const updateCurrentUser = useCallback(
+    (patch: Partial<UserProfile>) => {
+      if (role === 'guest') return;
+      setProfiles((prev) => {
+        const existing = prev[role];
+        const updated: UserProfile = {
+          ...existing,
+          ...patch,
+          links: patch.links ? { ...existing.links, ...patch.links } : existing.links,
+          notificationPreferences: patch.notificationPreferences
+            ? { ...existing.notificationPreferences, ...patch.notificationPreferences }
+            : existing.notificationPreferences,
+        };
+        const nextProfiles: RoleProfileMap = {
+          ...prev,
+          [role]: updated,
+        };
+        persistProfiles(nextProfiles);
+        setUsers((prevUsers) => prevUsers.map((u) => (u.id === updated.id ? updated : u)));
+        if (role === 'instructor') {
+          setCourses((prevCourses) =>
+            prevCourses.map((c) =>
+              c.instructorId === updated.id
+                ? {
+                    ...c,
+                    instructorName: updated.name,
+                    instructorAvatar: updated.avatar,
+                  }
+                : c
+            )
+          );
+        }
+        return nextProfiles;
+      });
+    },
+    [role]
+  );
+
+  const notifications = useMemo(
+    () =>
+      role === 'guest'
+        ? []
+        : allNotifications.filter((n) => !n.roles || n.roles.includes(role)),
+    [allNotifications, role]
   );
 
   const markNotificationRead = useCallback((id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setAllNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  }, []);
+
+  const toggleNotificationRead = useCallback((id: string) => {
+    setAllNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n))
+    );
+  }, []);
+
+  const deleteNotification = useCallback((id: string) => {
+    setAllNotifications((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   const markAllNotificationsRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+    if (role === 'guest') return;
+    setAllNotifications((prev) =>
+      prev.map((n) => (!n.roles || n.roles.includes(role) ? { ...n, read: true } : n))
+    );
+  }, [role]);
 
   const toggleWishlist = useCallback(
     (courseId: string) => {
@@ -390,7 +503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [setCourseExamScore]
   );
 
-  const currentUser = role === 'guest' ? null : ROLE_USERS[role];
+  const currentUser = role === 'guest' ? null : profiles[role];
 
   const getDashboardPath = useCallback(
     (targetRole?: UserRole) => getRoleDashboardPath(targetRole ?? role),
@@ -402,7 +515,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         role,
         setRole,
+        profiles,
         currentUser,
+        updateCurrentUser,
         getDashboardPath,
         courses,
         setCourses,
@@ -420,6 +535,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCertificates,
         notifications,
         markNotificationRead,
+        toggleNotificationRead,
+        deleteNotification,
         markAllNotificationsRead,
         reports,
         setReports,

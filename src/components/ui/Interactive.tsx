@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ChevronDown,
   X,
@@ -9,6 +9,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Button, ComponentVisualState } from './Button';
+import { TextInput } from './Inputs';
 import { ToastMessage, ToastVariant } from '../../context/AppContext';
 import { EmptyState } from './DataDisplay';
 
@@ -404,9 +405,12 @@ export const ToastCard: React.FC<{
 
   const activeVariant = forceState === 'error' ? 'danger' : variant;
   const s = styles[activeVariant];
+  const isUrgent = activeVariant === 'danger' || activeVariant === 'warning';
 
   return (
     <div
+      role={isUrgent ? 'alert' : 'status'}
+      aria-live={isUrgent ? 'assertive' : 'polite'}
       className={`rounded-[12px] ${s.bg} border ${s.border} shadow-purple-md p-4 flex items-start gap-3 min-w-[280px] max-w-md ${
         forceState === 'disabled' ? 'opacity-50' : ''
       } ${forceState === 'focus' ? 'ring-2 ring-[#6D4AE0]' : ''}`}
@@ -434,6 +438,48 @@ export const ToastCard: React.FC<{
   );
 };
 
+const TOAST_AUTO_DISMISS_MS = 5000;
+
+const AutoDismissToastItem: React.FC<{
+  toast: ToastMessage;
+  onDismiss: (id: string) => void;
+}> = ({ toast, onDismiss }) => {
+  const [paused, setPaused] = useState(false);
+  const remainingRef = useRef<number>(TOAST_AUTO_DISMISS_MS);
+  const startedAtRef = useRef<number>(Date.now());
+
+  useEffect(() => {
+    if (paused) return;
+    startedAtRef.current = Date.now();
+    const timer = window.setTimeout(() => {
+      onDismiss(toast.id);
+    }, Math.max(50, remainingRef.current));
+
+    return () => {
+      window.clearTimeout(timer);
+      const elapsed = Date.now() - startedAtRef.current;
+      remainingRef.current = Math.max(0, remainingRef.current - elapsed);
+    };
+  }, [paused, toast.id, onDismiss]);
+
+  return (
+    <div
+      className="pointer-events-auto"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
+      <ToastCard
+        title={toast.title}
+        message={toast.message}
+        variant={toast.variant}
+        onDismiss={() => onDismiss(toast.id)}
+      />
+    </div>
+  );
+};
+
 export const ToastViewport: React.FC<{
   toasts: ToastMessage[];
   onDismiss: (id: string) => void;
@@ -443,15 +489,181 @@ export const ToastViewport: React.FC<{
   return (
     <div className="fixed top-20 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
       {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto">
-          <ToastCard
-            title={t.title}
-            message={t.message}
-            variant={t.variant}
-            onDismiss={() => onDismiss(t.id)}
-          />
-        </div>
+        <AutoDismissToastItem key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
+    </div>
+  );
+};
+
+export interface ConfirmDialogProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  description: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  onConfirm: () => void;
+  loading?: boolean;
+  requireTypedText?: string;
+  requireTypedLabel?: string;
+}
+
+/**
+ * Standard confirmation dialog built on Modal for destructive and high-impact actions.
+ */
+export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
+  open,
+  onClose,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  tone = 'primary',
+  onConfirm,
+  loading = false,
+  requireTypedText,
+  requireTypedLabel,
+}) => {
+  const [typedValue, setTypedValue] = useState('');
+
+  useEffect(() => {
+    if (!open) {
+      setTypedValue('');
+    }
+  }, [open]);
+
+  const confirmDisabled =
+    loading || (Boolean(requireTypedText) && typedValue.trim() !== requireTypedText);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            onClick={onConfirm}
+            loading={loading}
+            disabled={confirmDisabled}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-3">
+          {tone === 'danger' && (
+            <div className="w-10 h-10 rounded-full bg-[#FEF2F2] border border-[#DC2626]/25 text-[#DC2626] flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          )}
+          <div className="text-[14px] text-[#5F5B75] leading-relaxed">{description}</div>
+        </div>
+
+        {requireTypedText && (
+          <TextInput
+            label={
+              requireTypedLabel || `Type "${requireTypedText}" to confirm`
+            }
+            value={typedValue}
+            onChange={(e) => setTypedValue(e.target.value)}
+            placeholder={requireTypedText}
+            autoComplete="off"
+          />
+        )}
+      </div>
+    </Modal>
+  );
+};
+
+export interface FormErrorItem {
+  field: string;
+  message: string;
+  targetId?: string;
+}
+
+export interface FormErrorSummaryProps {
+  errors: FormErrorItem[];
+  title?: string;
+  summaryKey?: number | string;
+  className?: string;
+}
+
+/**
+ * Accessible form error summary that lists field errors and moves focus to itself on failed submission.
+ */
+export const FormErrorSummary: React.FC<FormErrorSummaryProps> = ({
+  errors,
+  title,
+  summaryKey,
+  className = '',
+}) => {
+  const summaryRef = useRef<HTMLDivElement | null>(null);
+
+  const focusSummary = useCallback(() => {
+    const el = summaryRef.current;
+    if (!el) return;
+    el.focus();
+    if (typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (errors.length > 0 && summaryKey !== undefined && summaryKey !== 0) {
+      focusSummary();
+    }
+  }, [summaryKey, errors.length, focusSummary]);
+
+  if (errors.length === 0) return null;
+
+  return (
+    <div
+      ref={summaryRef}
+      role="alert"
+      aria-live="assertive"
+      tabIndex={-1}
+      className={`rounded-[12px] bg-[#FEF2F2] border border-[#DC2626]/40 p-4 space-y-2 focus:outline-none focus:ring-3 focus:ring-[#DC2626]/30 ${className}`}
+    >
+      <div className="flex items-center gap-2 text-[#DC2626]">
+        <AlertCircle className="w-5 h-5 shrink-0" />
+        <p className="font-display font-bold text-[16px] text-[#1E1B2E]">
+          {title ||
+            `Please fix ${errors.length} ${errors.length === 1 ? 'error' : 'errors'} before continuing`}
+        </p>
+      </div>
+      <ul className="list-disc pl-6 space-y-1 text-[13px] text-[#DC2626]">
+        {errors.map((err, idx) => (
+          <li key={`${err.field}-${idx}`}>
+            {err.targetId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = document.getElementById(err.targetId!);
+                  target?.focus();
+                  if (target && typeof target.scrollIntoView === 'function') {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }
+                }}
+                className="text-left underline font-semibold hover:text-[#991B1B] cursor-pointer"
+              >
+                {err.field}: {err.message}
+              </button>
+            ) : (
+              <span>
+                <strong className="font-semibold">{err.field}:</strong> {err.message}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };

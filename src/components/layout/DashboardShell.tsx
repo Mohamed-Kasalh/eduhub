@@ -23,11 +23,43 @@ import {
   LogOut,
   Sparkles,
   X,
+  Info,
 } from 'lucide-react';
 import { BrandLogo } from '../brand/BrandLogo';
 import { Avatar, SearchInput, StatusChip } from '../ui';
 import { useApp } from '../../context/AppContext';
-import { UserRole } from '../../data/mockData';
+import { NotificationItem, UserRole } from '../../data/mockData';
+
+function getNotificationIcon(type: NotificationItem['type']) {
+  switch (type) {
+    case 'course':
+      return {
+        icon: <BookOpen className="w-4 h-4" />,
+        bg: 'bg-[#F3EFFF] text-[#6D4AE0]',
+      };
+    case 'exam':
+      return {
+        icon: <FileCheck2 className="w-4 h-4" />,
+        bg: 'bg-[#2563EB]/10 text-[#2563EB]',
+      };
+    case 'certificate':
+      return {
+        icon: <Award className="w-4 h-4" />,
+        bg: 'bg-[#16A34A]/10 text-[#16A34A]',
+      };
+    case 'moderation':
+      return {
+        icon: <ShieldAlert className="w-4 h-4" />,
+        bg: 'bg-[#F59E0B]/15 text-[#B45309]',
+      };
+    case 'system':
+    default:
+      return {
+        icon: <Info className="w-4 h-4" />,
+        bg: 'bg-[#5F5B75]/10 text-[#5F5B75]',
+      };
+  }
+}
 
 interface NavItem {
   label: string;
@@ -115,6 +147,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   const {
     role,
     setRole,
+    profiles,
     currentUser,
     notifications,
     markNotificationRead,
@@ -126,6 +159,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
+  const [notifTab, setNotifTab] = useState<'all' | 'unread'>('all');
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -133,8 +167,11 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   const notifMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeRole: Exclude<UserRole, 'guest'> = role === 'guest' ? 'student' : role;
+  const activeUser = currentUser || profiles[activeRole];
   const menuItems = ROLE_MENUS[activeRole];
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const popoverNotifications =
+    notifTab === 'unread' ? notifications.filter((n) => !n.read) : notifications;
 
   useEffect(() => {
     setMobileDrawerOpen(false);
@@ -290,8 +327,8 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
           {collapsed ? (
             <div className="flex justify-center">
               <Avatar
-                src={currentUser?.avatar}
-                name={currentUser?.name || 'Sara Ali'}
+                src={activeUser.avatar}
+                name={activeUser.name}
                 size="sm"
                 status="online"
               />
@@ -300,14 +337,14 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
             <div className="flex items-center justify-between gap-2 px-1">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Avatar
-                  src={currentUser?.avatar}
-                  name={currentUser?.name || 'Sara Ali'}
+                  src={activeUser.avatar}
+                  name={activeUser.name}
                   size="sm"
                   status="online"
                 />
                 <div className="min-w-0">
                   <p className="text-[13px] font-bold text-[#1E1B2E] truncate">
-                    {currentUser?.name || 'Sara Ali'}
+                    {activeUser.name}
                   </p>
                   <p className="text-[12px] text-[#5F5B75] capitalize">{activeRole} workspace</p>
                 </div>
@@ -392,37 +429,103 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                     <button
                       type="button"
                       onClick={markAllNotificationsRead}
-                      className="text-[12px] font-semibold text-[#6D4AE0] hover:underline cursor-pointer"
+                      disabled={unreadCount === 0}
+                      className="text-[12px] font-semibold text-[#6D4AE0] hover:underline disabled:opacity-45 disabled:pointer-events-none cursor-pointer"
                     >
                       Mark all as read
                     </button>
                   </div>
+
+                  {/* All / Unread Popover Tabs */}
+                  <div
+                    role="tablist"
+                    aria-label="Filter notifications"
+                    className="px-3 py-2 border-b border-[#E6E1F5] bg-white flex items-center gap-1.5"
+                  >
+                    {(
+                      [
+                        { id: 'all', label: `All (${notifications.length})` },
+                        { id: 'unread', label: `Unread (${unreadCount})` },
+                      ] as const
+                    ).map((tab) => {
+                      const active = notifTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          role="tab"
+                          type="button"
+                          aria-selected={active}
+                          onClick={() => setNotifTab(tab.id)}
+                          className={`px-3 py-1 rounded-[8px] text-[12px] font-bold transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#F3EFFF] text-[#6D4AE0]'
+                              : 'text-[#5F5B75] hover:bg-[#FAF8FF] hover:text-[#1E1B2E]'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <div className="divide-y divide-[#E6E1F5] max-h-72 overflow-y-auto">
-                    {notifications.map((n) => (
-                      <Link
-                        key={n.id}
-                        to={n.link}
-                        onClick={() => markNotificationRead(n.id)}
-                        className={`block px-4 py-3 hover:bg-[#FAF8FF] transition-colors ${
-                          !n.read ? 'bg-[#F3EFFF]/40' : ''
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-[14px] font-semibold text-[#1E1B2E]">{n.title}</p>
-                          {!n.read && (
-                            <span className="w-2 h-2 rounded-full bg-[#6D4AE0] shrink-0 mt-1.5" />
-                          )}
-                        </div>
-                        <p className="text-[12px] text-[#5F5B75] mt-0.5 line-clamp-2">
-                          {n.message}
+                    {popoverNotifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center space-y-1">
+                        <p className="text-[14px] font-bold text-[#1E1B2E]">
+                          {notifTab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
                         </p>
-                        <p className="text-[11px] text-[#5F5B75]/80 mt-1">{n.createdAt}</p>
-                      </Link>
-                    ))}
+                        <p className="text-[12px] text-[#5F5B75]">
+                          {notifTab === 'unread'
+                            ? 'You have read all updates in this workspace.'
+                            : 'Course updates and alerts will appear here.'}
+                        </p>
+                      </div>
+                    ) : (
+                      popoverNotifications.slice(0, 6).map((n) => {
+                        const typeMeta = getNotificationIcon(n.type);
+                        return (
+                          <Link
+                            key={n.id}
+                            to={n.link}
+                            onClick={() => {
+                              markNotificationRead(n.id);
+                              setNotifPopoverOpen(false);
+                            }}
+                            className={`flex items-start gap-3 px-4 py-3 hover:bg-[#FAF8FF] transition-colors ${
+                              !n.read ? 'bg-[#F3EFFF]/40' : ''
+                            }`}
+                          >
+                            <span
+                              className={`w-8 h-8 rounded-[8px] flex items-center justify-center shrink-0 mt-0.5 ${typeMeta.bg}`}
+                            >
+                              {typeMeta.icon}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-[13px] font-semibold text-[#1E1B2E] leading-snug">
+                                  {n.title}
+                                </p>
+                                {!n.read && (
+                                  <span
+                                    aria-label="Unread"
+                                    className="w-2 h-2 rounded-full bg-[#6D4AE0] shrink-0 mt-1.5"
+                                  />
+                                )}
+                              </div>
+                              <p className="text-[12px] text-[#5F5B75] mt-0.5 line-clamp-2">
+                                {n.message}
+                              </p>
+                              <p className="text-[11px] text-[#5F5B75]/80 mt-1">{n.createdAt}</p>
+                            </div>
+                          </Link>
+                        );
+                      })
+                    )}
                   </div>
                   <div className="p-2.5 border-t border-[#E6E1F5] bg-[#FAF8FF] text-center">
                     <Link
                       to="/notifications"
+                      onClick={() => setNotifPopoverOpen(false)}
                       className="text-[13px] font-semibold text-[#6D4AE0] hover:underline"
                     >
                       View all notifications
@@ -441,14 +544,14 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                 aria-label="Open user menu"
               >
                 <Avatar
-                  src={currentUser?.avatar}
-                  name={currentUser?.name || 'Sara Ali'}
+                  src={activeUser.avatar}
+                  name={activeUser.name}
                   size="sm"
                   status="online"
                 />
                 <div className="hidden sm:block text-left leading-tight">
                   <p className="text-[14px] font-bold text-[#1E1B2E]">
-                    {currentUser?.name || 'Sara Ali'}
+                    {activeUser.name}
                   </p>
                   <p className="text-[12px] text-[#5F5B75] capitalize">{activeRole}</p>
                 </div>
@@ -458,10 +561,10 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                 <div className="absolute right-0 mt-2 w-56 rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-lg py-1.5 z-50">
                   <div className="px-4 py-2.5 border-b border-[#E6E1F5]">
                     <p className="text-[14px] font-bold text-[#1E1B2E]">
-                      {currentUser?.name || 'Sara Ali'}
+                      {activeUser.name}
                     </p>
                     <p className="text-[12px] text-[#5F5B75] truncate">
-                      {currentUser?.email || 'sara.ali@eduhub.com'}
+                      {activeUser.email}
                     </p>
                   </div>
                   <Link

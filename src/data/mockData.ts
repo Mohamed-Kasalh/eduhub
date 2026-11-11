@@ -3,6 +3,24 @@ export type UserRole = 'guest' | 'student' | 'instructor' | 'admin' | 'superviso
 export type CourseLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 export type CourseStatus = 'Published' | 'Pending review' | 'Draft' | 'Rejected';
 
+export type NotificationPreferenceKey =
+  | 'courseReplies'
+  | 'examResults'
+  | 'certificates'
+  | 'moderation'
+  | 'announcements';
+
+export type NotificationPreferenceMap = Record<
+  NotificationPreferenceKey,
+  { inApp: boolean; email: boolean }
+>;
+
+export interface UserLinks {
+  website?: string;
+  linkedin?: string;
+  github?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -11,6 +29,10 @@ export interface UserProfile {
   avatar: string;
   title: string;
   bio: string;
+  phone?: string;
+  links?: UserLinks;
+  expertiseTags?: string[];
+  notificationPreferences?: NotificationPreferenceMap;
   joinedAt: string;
   status: 'Active' | 'Suspended' | 'Pending';
   enrolledCourseIds?: string[];
@@ -194,6 +216,7 @@ export interface NotificationItem {
   read: boolean;
   type: 'course' | 'exam' | 'certificate' | 'moderation' | 'system';
   link: string;
+  roles?: Exclude<UserRole, 'guest'>[];
 }
 
 export interface AchievementBadge {
@@ -216,6 +239,14 @@ export interface ModerationReport {
   status: 'Open' | 'Investigating' | 'Resolved';
 }
 
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferenceMap = {
+  courseReplies: { inApp: true, email: true },
+  examResults: { inApp: true, email: true },
+  certificates: { inApp: true, email: true },
+  moderation: { inApp: true, email: false },
+  announcements: { inApp: true, email: false },
+};
+
 export const ROLE_USERS: Record<Exclude<UserRole, 'guest'>, UserProfile> = {
   student: {
     id: 'user-student-1',
@@ -225,6 +256,13 @@ export const ROLE_USERS: Record<Exclude<UserRole, 'guest'>, UserProfile> = {
     avatar: 'https://images.unsplash.com/photo-1590650213165-c1fef80648c4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400',
     title: 'Frontend Engineering Learner',
     bio: 'Computer science graduate building modern web applications with React, TypeScript, and accessible design systems.',
+    phone: '+20 100 555 0142',
+    links: {
+      website: 'https://saraali.dev',
+      linkedin: 'https://linkedin.com/in/sara-ali-dev',
+      github: 'https://github.com/sara-ali',
+    },
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     joinedAt: 'January 2025',
     status: 'Active',
     enrolledCourseIds: ['course-1', 'course-2', 'course-3', 'course-4', 'course-5'],
@@ -240,6 +278,14 @@ export const ROLE_USERS: Record<Exclude<UserRole, 'guest'>, UserProfile> = {
     avatar: 'https://images.unsplash.com/photo-1679476819592-3e233227fd83?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400',
     title: 'Principal Frontend Architect & Instructor',
     bio: '12+ years shipping large-scale web platforms. Teaching over 48,000 students practical software engineering on EduHub.',
+    phone: '+20 102 440 8821',
+    links: {
+      website: 'https://ahmedhassan.io',
+      linkedin: 'https://linkedin.com/in/ahmed-hassan-arch',
+      github: 'https://github.com/ahmed-hassan',
+    },
+    expertiseTags: ['React 19', 'TypeScript', 'Design Systems', 'Web Accessibility', 'Testing'],
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     joinedAt: 'March 2023',
     status: 'Active',
   },
@@ -251,6 +297,13 @@ export const ROLE_USERS: Record<Exclude<UserRole, 'guest'>, UserProfile> = {
     avatar: 'https://images.unsplash.com/photo-1598616068838-75c77532d5bf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400',
     title: 'Platform Operations Administrator',
     bio: 'Overseeing platform settings, user lifecycle, catalog taxonomy, and verified academic credentials.',
+    phone: '+20 109 312 6640',
+    links: {
+      website: 'https://eduhub.com/team/nour',
+      linkedin: 'https://linkedin.com/in/nour-khaled-ops',
+      github: 'https://github.com/nour-khaled',
+    },
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     joinedAt: 'November 2022',
     status: 'Active',
   },
@@ -262,6 +315,13 @@ export const ROLE_USERS: Record<Exclude<UserRole, 'guest'>, UserProfile> = {
     avatar: 'https://images.unsplash.com/photo-1730469344658-f442e279df9d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400',
     title: 'Academic Quality & Trust Supervisor',
     bio: 'Ensuring every course syllabus, lesson discussion, and student interaction meets EduHub academic quality standards.',
+    phone: '+20 106 891 3305',
+    links: {
+      website: 'https://eduhub.com/trust',
+      linkedin: 'https://linkedin.com/in/hana-mostafa-edu',
+      github: '',
+    },
+    notificationPreferences: DEFAULT_NOTIFICATION_PREFERENCES,
     joinedAt: 'June 2023',
     status: 'Active',
   },
@@ -975,11 +1035,12 @@ export const NOTIFICATIONS: NotificationItem[] = [
   {
     id: 'notif-1',
     title: 'Certificate ready to download',
-    message: 'Congratulations Sara! Your certificate for UI/UX Design Masterclass has been verified and issued.',
+    message: 'Your certificate for UI/UX Design Masterclass has been verified and issued.',
     createdAt: '25 minutes ago',
     read: false,
     type: 'certificate',
     link: '/certificates/cert-101',
+    roles: ['student'],
   },
   {
     id: 'notif-2',
@@ -989,24 +1050,167 @@ export const NOTIFICATIONS: NotificationItem[] = [
     read: false,
     type: 'course',
     link: '/learn/course-1/lesson-103',
+    roles: ['student'],
   },
   {
     id: 'notif-3',
     title: 'Practice exam unlocked',
     message: 'You reached 68% in Complete React Developer Course. Take the practice exam anytime.',
-    createdAt: 'Yesterday',
-    read: true,
+    createdAt: '5 hours ago',
+    read: false,
     type: 'exam',
     link: '/exam/course-1',
+    roles: ['student'],
   },
   {
     id: 'notif-4',
     title: 'Course review queue updated',
     message: '2 courses (Cloud Security & Applied NLP) are awaiting supervisor syllabus review.',
-    createdAt: '2 days ago',
-    read: true,
+    createdAt: '1 hour ago',
+    read: false,
     type: 'moderation',
     link: '/supervisor/course-review',
+    roles: ['supervisor', 'admin'],
+  },
+  {
+    id: 'notif-5',
+    title: 'Flagged lesson comment requires attention',
+    message: 'A promotional link was reported inside Python for Data Science & AI — Lesson 4.',
+    createdAt: '3 hours ago',
+    read: false,
+    type: 'moderation',
+    link: '/supervisor/comments',
+    roles: ['supervisor', 'admin'],
+  },
+  {
+    id: 'notif-6',
+    title: 'New student question in React 19 lesson',
+    message: 'Mariam Tarek asked a question about custom hook cleanup functions in Lesson 5.',
+    createdAt: '40 minutes ago',
+    read: false,
+    type: 'course',
+    link: '/instructor/comments',
+    roles: ['instructor'],
+  },
+  {
+    id: 'notif-7',
+    title: 'Final exam pass rate summary published',
+    message: '92% of students who attempted Full-Stack TypeScript Final Exam passed this week.',
+    createdAt: '6 hours ago',
+    read: false,
+    type: 'exam',
+    link: '/instructor/exam-settings',
+    roles: ['instructor'],
+  },
+  {
+    id: 'notif-8',
+    title: 'New lesson added to Full-Stack TypeScript',
+    message: 'Instructor Ahmed Hassan uploaded "End-to-End Type Safety with Zod" (18 min).',
+    createdAt: 'Yesterday',
+    read: true,
+    type: 'course',
+    link: '/courses/course-5',
+    roles: ['student', 'instructor'],
+  },
+  {
+    id: 'notif-9',
+    title: 'Final exam graded: UI/UX Design Masterclass',
+    message: 'You scored 94% (Distinction) on Attempt 1 and met all certification criteria.',
+    createdAt: '2 days ago',
+    read: true,
+    type: 'exam',
+    link: '/exam/course-3/result',
+    roles: ['student'],
+  },
+  {
+    id: 'notif-10',
+    title: 'Weekly certificate registry audit complete',
+    message: '184 graduate credentials passed integrity verification with 0 anomalies detected.',
+    createdAt: '2 days ago',
+    read: true,
+    type: 'certificate',
+    link: '/admin/certificates',
+    roles: ['admin'],
+  },
+  {
+    id: 'notif-11',
+    title: 'Syllabus approved for Cloud Architecture',
+    message: 'Supervisor Hana Mostafa approved "Cloud Architecture & Kubernetes Basics" for catalog launch.',
+    createdAt: '3 days ago',
+    read: true,
+    type: 'course',
+    link: '/instructor/courses',
+    roles: ['instructor', 'admin', 'supervisor'],
+  },
+  {
+    id: 'notif-12',
+    title: 'Escalated report: Off-topic exam spoilers',
+    message: 'Student report #REP-408 was escalated for review on the Full-Stack TypeScript forum.',
+    createdAt: '3 days ago',
+    read: false,
+    type: 'moderation',
+    link: '/supervisor/reports',
+    roles: ['supervisor', 'admin'],
+  },
+  {
+    id: 'notif-13',
+    title: 'Scheduled platform maintenance completed',
+    message: 'Video streaming CDN nodes were upgraded with zero downtime and faster 1080p seek times.',
+    createdAt: '4 days ago',
+    read: true,
+    type: 'system',
+    link: '/notifications',
+    roles: ['student', 'instructor', 'admin', 'supervisor'],
+  },
+  {
+    id: 'notif-14',
+    title: 'Security tip: Review active login sessions',
+    message: 'You can inspect connected browsers and revoke unfamiliar sessions from Profile > Security.',
+    createdAt: '5 days ago',
+    read: true,
+    type: 'system',
+    link: '/profile',
+    roles: ['student', 'instructor', 'admin', 'supervisor'],
+  },
+  {
+    id: 'notif-15',
+    title: 'New 14-day learning streak milestone',
+    message: 'You earned the 14-day streak badge! Complete one more lesson today to keep it active.',
+    createdAt: '6 days ago',
+    read: true,
+    type: 'certificate',
+    link: '/student/dashboard',
+    roles: ['student'],
+  },
+  {
+    id: 'notif-16',
+    title: 'Course enrollment milestone reached',
+    message: 'Complete React Developer Course crossed 12,400 active enrollments this quarter.',
+    createdAt: '1 week ago',
+    read: true,
+    type: 'course',
+    link: '/instructor/students',
+    roles: ['instructor', 'admin'],
+  },
+  {
+    id: 'notif-17',
+    title: 'Comment moderation backlog cleared',
+    message: 'All 42 pending student discussions from the weekend were verified by the supervisor team.',
+    createdAt: '1 week ago',
+    read: true,
+    type: 'moderation',
+    link: '/supervisor/dashboard',
+    roles: ['supervisor', 'admin'],
+  },
+  {
+    id: 'notif-18',
+    title: 'Spring catalog curriculum guidelines updated',
+    message: 'Please review the updated 4-option exam bank checklist before submitting new courses.',
+    createdAt: '2 weeks ago',
+    read: true,
+    type: 'system',
+    link: '/courses',
+    roles: ['student', 'instructor', 'admin', 'supervisor'],
   },
 ];
 

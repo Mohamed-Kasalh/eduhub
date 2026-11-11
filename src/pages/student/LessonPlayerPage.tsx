@@ -38,6 +38,7 @@ import {
   StatusChip,
   Avatar,
   EmptyState,
+  ConfirmDialog,
 } from '../../components/ui';
 import { BrandLogo } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
@@ -148,6 +149,7 @@ export const LessonPlayerPage: React.FC = () => {
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
   const [visibleCommentsCount, setVisibleCommentsCount] = useState<number>(4);
   const [showEmptyCommentsPreview, setShowEmptyCommentsPreview] = useState(false);
+  const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
 
   // Show "Resume from 04:12" toast on open / lesson switch
   useEffect(() => {
@@ -260,7 +262,7 @@ export const LessonPlayerPage: React.FC = () => {
       id: `tcomment-${Date.now()}`,
       courseId: course.id,
       lessonId: activeLesson.id,
-      authorId: 'user-student-1',
+      authorId: student.id,
       authorName: student.name,
       authorAvatar: student.avatar,
       isSupervisorVerified: false,
@@ -327,7 +329,7 @@ export const LessonPlayerPage: React.FC = () => {
             ...c.replies,
             {
               id: `treply-${Date.now()}`,
-              authorId: 'user-student-1',
+              authorId: student.id,
               authorName: student.name,
               authorAvatar: student.avatar,
               isSupervisorVerified: false,
@@ -1237,7 +1239,7 @@ export const LessonPlayerPage: React.FC = () => {
                   ) : (
                     <div className="space-y-5">
                       {displayedComments.slice(0, visibleCommentsCount).map((comment) => {
-                        const isOwn = comment.authorId === 'user-student-1';
+                        const isOwn = comment.authorId === student.id;
                         const isPending = comment.status === 'pending';
                         const isEditing = editingCommentId === comment.id;
                         const isReplying = replyingToId === comment.id;
@@ -1309,7 +1311,7 @@ export const LessonPlayerPage: React.FC = () => {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteComment(comment.id)}
+                                      onClick={() => setCommentToDeleteId(comment.id)}
                                       className="p-1.5 rounded-[8px] text-[#5F5B75] hover:text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
                                       title="Delete your comment"
                                       aria-label="Delete comment"
@@ -1574,6 +1576,20 @@ export const LessonPlayerPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(commentToDeleteId)}
+        onClose={() => setCommentToDeleteId(null)}
+        title="Delete this comment?"
+        description="Are you sure you want to permanently remove your comment and any replies from this lesson discussion?"
+        confirmLabel="Delete comment"
+        tone="danger"
+        onConfirm={() => {
+          if (!commentToDeleteId) return;
+          handleDeleteComment(commentToDeleteId);
+          setCommentToDeleteId(null);
+        }}
+      />
     </div>
   );
 };

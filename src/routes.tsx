@@ -4,6 +4,7 @@ import { useApp } from './context/AppContext';
 import { PublicShell, RoleGuard } from './components/layout/RoleGuard';
 import { DashboardShell } from './components/layout/DashboardShell';
 import { PreviewSwitcher } from './components/layout/PreviewSwitcher';
+import { OfflineBanner } from './components/layout/OfflineBanner';
 import { ToastViewport } from './components/ui';
 import { DesignSystemPage } from './pages/DesignSystemPage';
 import {
@@ -28,9 +29,9 @@ import {
   ExamResultPage,
   CertificatesListPage,
   CertificateDetailPage,
-  ProfilePage,
-  NotificationsPage,
 } from './pages/student/StudentPages';
+import { ProfilePage } from './pages/shared/ProfilePage';
+import { NotificationsPage } from './pages/shared/NotificationsPage';
 import {
   InstructorDashboardPage,
   InstructorCoursesPage,
@@ -54,7 +55,12 @@ import {
   SupervisorCourseReviewPage,
   SupervisorReportsPage,
 } from './pages/supervisor/SupervisorPages';
-import { Forbidden403Page, NotFound404Page } from './pages/ErrorPages';
+import {
+  Forbidden403Page,
+  NotFound404Page,
+  Server500Page,
+  RouteErrorBoundary,
+} from './pages/ErrorPages';
 
 const RootLayout: React.FC = () => {
   const { toasts, removeToast } = useApp();
@@ -66,6 +72,7 @@ const RootLayout: React.FC = () => {
       >
         Skip to content
       </a>
+      <OfflineBanner />
       <ScrollRestoration />
       <Outlet />
       <ToastViewport toasts={toasts} onDismiss={removeToast} />
@@ -90,6 +97,7 @@ export const router = createBrowserRouter([
   {
     path: '/',
     Component: RootLayout,
+    ErrorBoundary: RouteErrorBoundary,
     children: [
       {
         index: true,
@@ -412,6 +420,14 @@ export const router = createBrowserRouter([
         element: (
           <AdaptiveShell>
             <NotFound404Page />
+          </AdaptiveShell>
+        ),
+      },
+      {
+        path: '500',
+        element: (
+          <AdaptiveShell>
+            <Server500Page />
           </AdaptiveShell>
         ),
       },

@@ -26,6 +26,7 @@ import {
   Breadcrumbs,
   Avatar,
   EmptyState,
+  ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS } from '../../data/mockData';
@@ -53,8 +54,9 @@ const QUEUE_WEEK_DATA = [
 // queue chart, recent moderation actions.
 // ============================================================================
 export const SupervisorDashboardPage: React.FC = () => {
+  const { currentUser } = useApp();
   const navigate = useNavigate();
-  const supervisor = ROLE_USERS.supervisor;
+  const supervisor = currentUser || ROLE_USERS.supervisor;
 
   return (
     <div className="space-y-8 pb-12">
@@ -277,6 +279,9 @@ export const SupervisorCommentsPage: React.FC = () => {
   >('Spam');
   const [mobileShowDetail, setMobileShowDetail] = useState<boolean>(false);
   const [previewAllCaughtUp, setPreviewAllCaughtUp] = useState<boolean>(false);
+  const [commentToDelete, setCommentToDelete] = useState<SupervisorCommentItem | null>(
+    null
+  );
 
   // Undo snapshot banner state ("toasts with Undo")
   const [undoSnapshot, setUndoSnapshot] = useState<{
@@ -714,7 +719,11 @@ export const SupervisorCommentsPage: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value as any)}
+                      onChange={(e) =>
+                        setRejectReason(
+                          e.target.value as 'Spam' | 'Offensive' | 'Off-topic' | 'Other'
+                        )
+                      }
                       aria-label="Rejection reason"
                       className="h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
                     >
@@ -734,7 +743,7 @@ export const SupervisorCommentsPage: React.FC = () => {
                       variant="danger"
                       size="md"
                       leftIcon={<Trash2 className="w-4 h-4" />}
-                      onClick={() => handleDeleteComment(activeComment)}
+                      onClick={() => setCommentToDelete(activeComment)}
                     >
                       Delete
                     </Button>
@@ -745,6 +754,24 @@ export const SupervisorCommentsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(commentToDelete)}
+        onClose={() => setCommentToDelete(null)}
+        title="Delete moderated comment?"
+        description={
+          commentToDelete
+            ? `Permanently delete the comment by ${commentToDelete.authorName}? You can still undo immediately afterward using the moderation bar.`
+            : ''
+        }
+        confirmLabel="Delete comment"
+        tone="danger"
+        onConfirm={() => {
+          if (!commentToDelete) return;
+          handleDeleteComment(commentToDelete);
+          setCommentToDelete(null);
+        }}
+      />
     </div>
   );
 };

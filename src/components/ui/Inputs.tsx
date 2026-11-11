@@ -494,24 +494,35 @@ export const OtpInput: React.FC<OtpInputProps> = ({
 
 export interface FileDropzoneProps extends BaseFieldProps {
   acceptLabel?: string;
+  accept?: string;
   onFileSelect?: (fileName: string) => void;
+  onFilePicked?: (file: File) => void;
+  progress?: number;
+  selectedFileName?: string | null;
+  onRetry?: () => void;
 }
 
 export const FileDropzone: React.FC<FileDropzoneProps> = ({
   label = 'Upload course thumbnail or syllabus PDF',
   acceptLabel = 'PNG, JPG, WebP, or PDF up to 10 MB',
+  accept,
   helperText,
   errorText,
   loading = false,
   disabled = false,
   forceState,
   onFileSelect,
+  onFilePicked,
+  progress,
+  selectedFileName,
+  onRetry,
   className = '',
 }) => {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  const displayFileName = selectedFileName !== undefined ? selectedFileName : selectedFile;
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
   const hasError = Boolean(errorText) || forceState === 'error';
@@ -526,10 +537,13 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
 
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0 || isDisabled) return;
-    const name = files[0].name;
-    setSelectedFile(name);
-    onFileSelect?.(name);
+    const file = files[0];
+    setSelectedFile(file.name);
+    onFileSelect?.(file.name);
+    onFilePicked?.(file);
   };
+
+  const displayProgress = typeof progress === 'number' ? Math.max(0, Math.min(100, progress)) : 64;
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
@@ -569,22 +583,34 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
         <input
           ref={inputRef}
           type="file"
+          accept={accept}
           className="hidden"
           disabled={isDisabled}
-          onChange={(e) => handleFiles(e.target.files)}
+          onChange={(e) => {
+            handleFiles(e.target.files);
+            e.target.value = '';
+          }}
         />
         <div className="flex flex-col items-center gap-2">
           {isLoading ? (
             <>
               <Loader2 className="w-7 h-7 text-[#6D4AE0] animate-spin" />
-              <p className="text-[14px] font-semibold text-[#1E1B2E]">Uploading file (64%)...</p>
+              <p className="text-[14px] font-semibold text-[#1E1B2E]">
+                Uploading file ({displayProgress}%)...
+              </p>
+              <div className="w-44 h-2 rounded-full bg-[#F3EFFF] border border-[#E6E1F5] overflow-hidden">
+                <div
+                  className="h-full bg-[#6D4AE0] transition-all duration-150"
+                  style={{ width: `${displayProgress}%` }}
+                />
+              </div>
             </>
-          ) : selectedFile ? (
+          ) : displayFileName && !hasError ? (
             <>
               <CheckCircle2 className="w-7 h-7 text-[#16A34A]" />
               <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1E1B2E]">
                 <FileText className="w-4 h-4 text-[#6D4AE0]" />
-                <span>{selectedFile}</span>
+                <span>{displayFileName}</span>
               </div>
               <span className="text-[12px] text-[#6D4AE0] font-semibold">
                 Click to replace file
@@ -604,7 +630,24 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
         </div>
       </div>
       {resolvedError ? (
-        <p className="text-[12px] text-[#DC2626] font-medium">{resolvedError}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[12px] text-[#DC2626] font-medium flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>{resolvedError}</span>
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={() => {
+                onRetry();
+                inputRef.current?.click();
+              }}
+              className="text-[12px] font-bold text-[#6D4AE0] hover:underline cursor-pointer"
+            >
+              Retry
+            </button>
+          )}
+        </div>
       ) : helperText ? (
         <p className="text-[12px] text-[#5F5B75]">{helperText}</p>
       ) : null}

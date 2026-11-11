@@ -25,6 +25,7 @@ import {
   Drawer,
   Modal,
   EmptyState,
+  ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import {
@@ -82,6 +83,10 @@ export const InstructorQuestionBankPage: React.FC = () => {
 
   // Import CSV modal state
   const [csvModalOpen, setCsvModalOpen] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [questionToDelete, setQuestionToDelete] = useState<InstructorQuestionItem | null>(
+    null
+  );
 
   // "Add question" side drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -518,7 +523,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
                 size="sm"
                 variant="danger"
                 leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-                onClick={handleBulkDelete}
+                onClick={() => setBulkDeleteConfirmOpen(true)}
               >
                 Delete selected
               </Button>
@@ -631,17 +636,10 @@ export const InstructorQuestionBankPage: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setBankQuestions((prev) =>
-                              prev.filter((q) => q.id !== item.id)
-                            );
-                            addToast({
-                              title: 'Question deleted',
-                              variant: 'info',
-                            });
-                          }}
+                          onClick={() => setQuestionToDelete(item)}
                           className="p-1.5 rounded-[8px] text-[#5F5B75] hover:text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
                           title="Delete question"
+                          aria-label="Delete question"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -872,7 +870,9 @@ export const InstructorQuestionBankPage: React.FC = () => {
               </label>
               <select
                 value={qDifficulty}
-                onChange={(e) => setQDifficulty(e.target.value as any)}
+                onChange={(e) =>
+                  setQDifficulty(e.target.value as InstructorQuestionItem['difficulty'])
+                }
                 className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
               >
                 <option value="Easy">Easy</option>
@@ -939,6 +939,41 @@ export const InstructorQuestionBankPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title={`Delete ${selectedIds.length} selected ${selectedIds.length === 1 ? 'question' : 'questions'}?`}
+        description="This permanently removes the selected questions from the bank and cannot be undone."
+        confirmLabel="Delete selected"
+        tone="danger"
+        onConfirm={() => {
+          handleBulkDelete();
+          setBulkDeleteConfirmOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(questionToDelete)}
+        onClose={() => setQuestionToDelete(null)}
+        title="Delete this question?"
+        description={
+          questionToDelete
+            ? `Are you sure you want to remove "${questionToDelete.question}" from your question bank?`
+            : ''
+        }
+        confirmLabel="Delete question"
+        tone="danger"
+        onConfirm={() => {
+          if (!questionToDelete) return;
+          setBankQuestions((prev) => prev.filter((q) => q.id !== questionToDelete.id));
+          addToast({
+            title: 'Question deleted',
+            variant: 'info',
+          });
+          setQuestionToDelete(null);
+        }}
+      />
     </div>
   );
 };

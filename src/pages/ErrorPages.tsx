@@ -1,6 +1,15 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
-import { ShieldAlert, ArrowLeft, Compass, LayoutDashboard, UserCheck } from 'lucide-react';
+import { Link, useLocation, useNavigate, useRouteError, isRouteErrorResponse } from 'react-router';
+import {
+  ShieldAlert,
+  ArrowLeft,
+  Compass,
+  LayoutDashboard,
+  UserCheck,
+  ServerCrash,
+  RefreshCw,
+  Home,
+} from 'lucide-react';
 import { Button, StatusChip } from '../components/ui';
 import { CatMascot } from '../components/brand/BrandLogo';
 import { useApp } from '../context/AppContext';
@@ -135,6 +144,90 @@ export const NotFound404Page: React.FC = () => {
           </Button>
         </div>
       </div>
+    </div>
+  );
+};
+
+export const Server500Page: React.FC<{
+  onRetry?: () => void;
+  errorMessage?: string;
+}> = ({ onRetry, errorMessage }) => {
+  const handleRetry = () => {
+    if (onRetry) {
+      onRetry();
+      return;
+    }
+    window.location.reload();
+  };
+
+  return (
+    <div className="min-h-[75vh] flex items-center justify-center px-4 py-12">
+      <div className="max-w-lg w-full rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-md p-8 text-center flex flex-col items-center">
+        <div className="w-16 h-16 rounded-full bg-[#FEF2F2] border border-[#DC2626]/25 text-[#DC2626] flex items-center justify-center mx-auto mb-4">
+          <ServerCrash className="w-8 h-8" />
+        </div>
+
+        <StatusChip label="Error 500 • Server error" variant="danger" className="mb-3" />
+
+        <h1 className="text-[36px] sm:text-[40px] font-display font-bold text-[#1E1B2E] mb-2">
+          Something went wrong
+        </h1>
+
+        <p className="text-[16px] text-[#5F5B75] mb-6 leading-relaxed">
+          An unexpected error interrupted this page. Your local progress is safe—try reloading the view or return to the EduHub home page.
+        </p>
+
+        {errorMessage && (
+          <p className="w-full rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] px-3.5 py-2.5 text-[12px] text-[#5F5B75] font-mono break-words mb-6">
+            {errorMessage}
+          </p>
+        )}
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto">
+          <Button
+            variant="primary"
+            size="md"
+            leftIcon={<RefreshCw className="w-4 h-4" />}
+            onClick={handleRetry}
+          >
+            Try again
+          </Button>
+          <Link to="/">
+            <Button variant="secondary" size="md" leftIcon={<Home className="w-4 h-4" />}>
+              Go home
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const RouteErrorBoundary: React.FC = () => {
+  const error = useRouteError();
+
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return (
+      <div className="min-h-screen bg-[#FAF8FF] text-[#1E1B2E]">
+        <main id="main-content">
+          <NotFound404Page />
+        </main>
+      </div>
+    );
+  }
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : isRouteErrorResponse(error)
+      ? `${error.status} ${error.statusText}`
+      : undefined;
+
+  return (
+    <div className="min-h-screen bg-[#FAF8FF] text-[#1E1B2E]">
+      <main id="main-content">
+        <Server500Page errorMessage={message} />
+      </main>
     </div>
   );
 };

@@ -75,18 +75,30 @@ export const PublicNavbar: React.FC = () => {
           />
         </div>
 
-        {/* Right: Log in (ghost) + Sign up (primary) + current role dashboard shortcut */}
+        {/* Right: Log in (ghost) + Sign up (primary) + current role dashboard & profile shortcut */}
         <div className="hidden md:flex items-center gap-2.5 shrink-0">
           {role !== 'guest' && currentUser && (
-            <Link to={getDashboardPath()}>
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<LayoutDashboard className="w-4 h-4" />}
+            <>
+              <Link
+                to="/profile"
+                className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[10px] border border-[#E6E1F5] bg-[#FAF8FF] hover:border-[#A78BFA] transition-colors"
+                title={`Signed in as ${currentUser.name}`}
               >
-                My dashboard
-              </Button>
-            </Link>
+                <Avatar src={currentUser.avatar} name={currentUser.name} size="sm" />
+                <span className="text-[13px] font-bold text-[#1E1B2E] max-w-[110px] truncate">
+                  {currentUser.name}
+                </span>
+              </Link>
+              <Link to={getDashboardPath()}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<LayoutDashboard className="w-4 h-4" />}
+                >
+                  My dashboard
+                </Button>
+              </Link>
+            </>
           )}
           <Link to="/login">
             <Button variant="ghost" size="md">

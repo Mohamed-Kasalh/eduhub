@@ -31,6 +31,7 @@ import {
   Modal,
   Drawer,
   EmptyState,
+  ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS } from '../../data/mockData';
@@ -57,9 +58,9 @@ export {
 // notices for courses pending review or rejected.
 // ============================================================================
 export const InstructorDashboardPage: React.FC = () => {
-  const { addToast } = useApp();
+  const { currentUser, addToast } = useApp();
   const navigate = useNavigate();
-  const instructor = ROLE_USERS.instructor;
+  const instructor = currentUser || ROLE_USERS.instructor;
 
   const [selectedPointIdx, setSelectedPointIdx] = useState<number>(
     ENROLLMENTS_30_DAYS.length - 1
@@ -857,29 +858,19 @@ export const InstructorCoursesPage: React.FC = () => {
       )}
 
       {/* CONFIRM DELETE COURSE MODAL */}
-      <Modal
+      <ConfirmDialog
         open={Boolean(courseToDelete)}
         onClose={() => setCourseToDelete(null)}
         title="Delete this course?"
-        description="This action cannot be undone."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setCourseToDelete(null)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={handleConfirmDelete}>
-              Confirm delete
-            </Button>
-          </>
+        description={
+          courseToDelete
+            ? `Are you sure you want to permanently delete "${courseToDelete.title}" (${courseToDelete.status})? This action cannot be undone.`
+            : ''
         }
-      >
-        {courseToDelete && (
-          <div className="p-4 rounded-[10px] bg-[#FEF2F2] border border-[#DC2626]/30 text-[14px] text-[#1E1B2E]">
-            Are you sure you want to permanently delete{' '}
-            <strong>{courseToDelete.title}</strong> ({courseToDelete.status})?
-          </div>
-        )}
-      </Modal>
+        confirmLabel="Confirm delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 };
@@ -1174,7 +1165,8 @@ export const InstructorStudentsPage: React.FC = () => {
 // "Mark as resolved", empty state.
 // ============================================================================
 export const InstructorCommentsPage: React.FC = () => {
-  const { addToast } = useApp();
+  const { currentUser, addToast } = useApp();
+  const instructor = currentUser || ROLE_USERS.instructor;
 
   const [threads, setThreads] = useState<InstructorCommentThread[]>(
     INITIAL_INSTRUCTOR_COMMENTS
@@ -1204,8 +1196,8 @@ export const InstructorCommentsPage: React.FC = () => {
                 ...t.replies,
                 {
                   id: `rep-${Date.now()}`,
-                  authorName: 'Ahmed Hassan (Instructor)',
-                  authorAvatar: ROLE_USERS.instructor.avatar,
+                  authorName: `${instructor.name} (Instructor)`,
+                  authorAvatar: instructor.avatar,
                   createdAt: 'Just now',
                   content: text,
                 },

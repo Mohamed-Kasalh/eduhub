@@ -480,7 +480,7 @@ export const INITIAL_INSTRUCTOR_QUESTIONS: InstructorQuestionItem[] = [
     courseTitle: 'Complete React Developer Course',
     sectionId: 'sec-4',
     sectionName: 'Section 4: Testing & Certification Prep',
-    type: 'Hard' as any, // will be 'Hard' difficulty below
+    type: 'single',
     question:
       'How do you prevent race conditions when fetching search results inside a custom hook as the query string changes rapidly?',
     options: [

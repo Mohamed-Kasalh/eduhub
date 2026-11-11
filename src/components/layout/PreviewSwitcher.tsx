@@ -10,44 +10,18 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useApp, getRoleDashboardPath } from '../../context/AppContext';
-import { UserRole, ROLE_USERS } from '../../data/mockData';
+import { UserRole } from '../../data/mockData';
 
-const ROLE_OPTIONS: Array<{
+const ROLE_BADGES: Array<{
   role: UserRole;
   label: string;
-  person: string;
   badgeColor: string;
 }> = [
-  {
-    role: 'guest',
-    label: 'Guest',
-    person: 'Public visitor',
-    badgeColor: 'bg-[#5F5B75] text-white',
-  },
-  {
-    role: 'student',
-    label: 'Student',
-    person: ROLE_USERS.student.name,
-    badgeColor: 'bg-[#6D4AE0] text-white',
-  },
-  {
-    role: 'instructor',
-    label: 'Instructor',
-    person: ROLE_USERS.instructor.name,
-    badgeColor: 'bg-[#F59E3B] text-white',
-  },
-  {
-    role: 'admin',
-    label: 'Admin',
-    person: ROLE_USERS.admin.name,
-    badgeColor: 'bg-[#2563EB] text-white',
-  },
-  {
-    role: 'supervisor',
-    label: 'Supervisor',
-    person: ROLE_USERS.supervisor.name,
-    badgeColor: 'bg-[#16A34A] text-white',
-  },
+  { role: 'guest', label: 'Guest', badgeColor: 'bg-[#5F5B75] text-white' },
+  { role: 'student', label: 'Student', badgeColor: 'bg-[#6D4AE0] text-white' },
+  { role: 'instructor', label: 'Instructor', badgeColor: 'bg-[#F59E3B] text-white' },
+  { role: 'admin', label: 'Admin', badgeColor: 'bg-[#2563EB] text-white' },
+  { role: 'supervisor', label: 'Supervisor', badgeColor: 'bg-[#16A34A] text-white' },
 ];
 
 const QUICK_ROUTES: Array<{ group: string; items: Array<{ label: string; path: string }> }> = [
@@ -118,17 +92,23 @@ const QUICK_ROUTES: Array<{ group: string; items: Array<{ label: string; path: s
       { label: 'Moderation reports', path: '/supervisor/reports' },
       { label: '403 Access denied', path: '/403' },
       { label: '404 Not found', path: '/404' },
+      { label: '500 Server error', path: '/500' },
     ],
   },
 ];
 
 export const PreviewSwitcher: React.FC = () => {
-  const { role, setRole } = useApp();
+  const { role, setRole, profiles } = useApp();
   const [expanded, setExpanded] = useState(false);
   const [showRoutes, setShowRoutes] = useState(false);
   const [autoNavigate, setAutoNavigate] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const ROLE_OPTIONS = ROLE_BADGES.map((item) => ({
+    ...item,
+    person: item.role === 'guest' ? 'Public visitor' : profiles[item.role].name,
+  }));
 
   const activeMeta = ROLE_OPTIONS.find((r) => r.role === role) || ROLE_OPTIONS[1];
 

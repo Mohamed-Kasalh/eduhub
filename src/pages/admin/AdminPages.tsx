@@ -38,6 +38,7 @@ import {
   Drawer,
   Pagination,
   EmptyState,
+  ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS, Course, Category } from '../../data/mockData';
@@ -102,8 +103,8 @@ export const CourseWorkflowBanner: React.FC<{ roleMode: 'admin' | 'supervisor' }
 // pending approvals widget (courses, instructors), recent activity feed.
 // ============================================================================
 export const AdminDashboardPage: React.FC = () => {
-  const { courses, setCourses, addToast } = useApp();
-  const admin = ROLE_USERS.admin;
+  const { courses, setCourses, currentUser, addToast } = useApp();
+  const admin = currentUser || ROLE_USERS.admin;
 
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(
     USER_GROWTH_6_MONTHS.length - 1
@@ -584,6 +585,10 @@ export const AdminUsersPage: React.FC = () => {
   const [sendInviteToggle, setSendInviteToggle] = useState(true);
 
   const [userToDelete, setUserToDelete] = useState<AdminUserRecord | null>(null);
+  const [suspendConfirmTarget, setSuspendConfirmTarget] =
+    useState<AdminUserRecord | null>(null);
+  const [bulkSuspendConfirmOpen, setBulkSuspendConfirmOpen] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [detailUser, setDetailUser] = useState<AdminUserRecord | null>(null);
   const [openMenuUserId, setOpenMenuUserId] = useState<string | null>(null);
 
@@ -610,7 +615,7 @@ export const AdminUsersPage: React.FC = () => {
       id: `user-${Date.now()}`,
       name: newName.trim(),
       email: newEmail.trim(),
-      avatar: ROLE_USERS.student.avatar,
+      avatar: '',
       role: newRole,
       status: sendInviteToggle ? 'Pending' : 'Active',
       joinedAt: 'Just now',
@@ -761,23 +766,14 @@ export const AdminUsersPage: React.FC = () => {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => handleBulkStatus('Suspended')}
+                onClick={() => setBulkSuspendConfirmOpen(true)}
               >
                 Suspend selected
               </Button>
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() => {
-                  setUserRecords((prev) =>
-                    prev.filter((u) => !selectedUserIds.includes(u.id))
-                  );
-                  setSelectedUserIds([]);
-                  addToast({
-                    title: 'Deleted selected user accounts',
-                    variant: 'info',
-                  });
-                }}
+                onClick={() => setBulkDeleteConfirmOpen(true)}
               >
                 Delete selected
               </Button>
@@ -888,7 +884,13 @@ export const AdminUsersPage: React.FC = () => {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleToggleSuspend(u)}
+                        onClick={() => {
+                          if (u.status === 'Suspended') {
+                            handleToggleSuspend(u);
+                          } else {
+                            setSuspendConfirmTarget(u);
+                          }
+                        }}
                       >
                         {u.status === 'Suspended' ? 'Activate' : 'Suspend'}
                       </Button>
@@ -1008,41 +1010,80 @@ export const AdminUsersPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* DELETE USER CONFIRM MODAL */}
-      <Modal
+      {/* DELETE USER CONFIRM DIALOG */}
+      <ConfirmDialog
         open={Boolean(userToDelete)}
         onClose={() => setUserToDelete(null)}
         title="Delete user account?"
-        description="This permanently removes the user and their session history."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setUserToDelete(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (!userToDelete) return;
-                setUserRecords((prev) => prev.filter((u) => u.id !== userToDelete.id));
-                addToast({
-                  title: `Deleted account ${userToDelete.name}`,
-                  variant: 'info',
-                });
-                setUserToDelete(null);
-              }}
-            >
-              Confirm delete
-            </Button>
-          </>
+        description={
+          userToDelete
+            ? `Are you sure you want to permanently delete ${userToDelete.name} (${userToDelete.email}) and their session history?`
+            : ''
         }
-      >
-        {userToDelete && (
-          <p className="text-[14px] text-[#5F5B75]">
-            Are you sure you want to delete <strong>{userToDelete.name}</strong> (
-            {userToDelete.email})?
-          </p>
-        )}
-      </Modal>
+        confirmLabel="Confirm delete"
+        tone="danger"
+        onConfirm={() => {
+          if (!userToDelete) return;
+          setUserRecords((prev) => prev.filter((u) => u.id !== userToDelete.id));
+          addToast({
+            title: `Deleted account ${userToDelete.name}`,
+            variant: 'info',
+          });
+          setUserToDelete(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(suspendConfirmTarget)}
+        onClose={() => setSuspendConfirmTarget(null)}
+        title="Suspend this user?"
+        description={
+          suspendConfirmTarget
+            ? `${suspendConfirmTarget.name} will be immediately blocked from accessing active courses and sessions until reactivated.`
+            : ''
+        }
+        confirmLabel="Suspend user"
+        tone="danger"
+        onConfirm={() => {
+          if (!suspendConfirmTarget) return;
+          handleToggleSuspend(suspendConfirmTarget);
+          setSuspendConfirmTarget(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkSuspendConfirmOpen}
+        onClose={() => setBulkSuspendConfirmOpen(false)}
+        title={`Suspend ${selectedUserIds.length} selected accounts?`}
+        description="Selected users will be paused from signing in until reactivated by an administrator."
+        confirmLabel="Suspend selected"
+        tone="danger"
+        onConfirm={() => {
+          handleBulkStatus('Suspended');
+          setBulkSuspendConfirmOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title={`Delete ${selectedUserIds.length} selected user accounts?`}
+        description="This permanently deletes the selected accounts and cannot be undone."
+        confirmLabel="Delete selected"
+        tone="danger"
+        onConfirm={() => {
+          const count = selectedUserIds.length;
+          setUserRecords((prev) =>
+            prev.filter((u) => !selectedUserIds.includes(u.id))
+          );
+          setSelectedUserIds([]);
+          setBulkDeleteConfirmOpen(false);
+          addToast({
+            title: `Deleted ${count} selected user accounts`,
+            variant: 'info',
+          });
+        }}
+      />
 
       {/* USER DETAIL DRAWER WITH ACTIVITY */}
       <Drawer
@@ -1408,39 +1449,28 @@ export const AdminCoursesPage: React.FC = () => {
         )}
       </Modal>
 
-      {/* DELETE COURSE MODAL */}
-      <Modal
+      {/* DELETE COURSE CONFIRM DIALOG */}
+      <ConfirmDialog
         open={Boolean(deleteCourseTarget)}
         onClose={() => setDeleteCourseTarget(null)}
         title="Delete course permanently?"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDeleteCourseTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (!deleteCourseTarget) return;
-                setCourses((prev) =>
-                  prev.filter((c) => c.id !== deleteCourseTarget.id)
-                );
-                addToast({
-                  title: `Deleted ${deleteCourseTarget.title}`,
-                  variant: 'info',
-                });
-                setDeleteCourseTarget(null);
-              }}
-            >
-              Delete course
-            </Button>
-          </>
+        description={
+          deleteCourseTarget
+            ? `Are you sure you want to permanently delete "${deleteCourseTarget.title}"?`
+            : ''
         }
-      >
-        <p className="text-[14px] text-[#5F5B75]">
-          Are you sure you want to delete <strong>{deleteCourseTarget?.title}</strong>?
-        </p>
-      </Modal>
+        confirmLabel="Delete course"
+        tone="danger"
+        onConfirm={() => {
+          if (!deleteCourseTarget) return;
+          setCourses((prev) => prev.filter((c) => c.id !== deleteCourseTarget.id));
+          addToast({
+            title: `Deleted ${deleteCourseTarget.title}`,
+            variant: 'info',
+          });
+          setDeleteCourseTarget(null);
+        }}
+      />
 
       {/* COURSE PREVIEW DRAWER */}
       <Drawer
@@ -1733,39 +1763,28 @@ export const AdminCategoriesPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* DELETE CATEGORY CONFIRM MODAL */}
-      <Modal
+      {/* DELETE CATEGORY CONFIRM DIALOG */}
+      <ConfirmDialog
         open={Boolean(deleteCatTarget)}
         onClose={() => setDeleteCatTarget(null)}
         title="Delete category?"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDeleteCatTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => {
-                if (!deleteCatTarget) return;
-                setCategories((prev) =>
-                  prev.filter((c) => c.id !== deleteCatTarget.id)
-                );
-                addToast({
-                  title: `Deleted category ${deleteCatTarget.name}`,
-                  variant: 'info',
-                });
-                setDeleteCatTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </>
+        description={
+          deleteCatTarget
+            ? `Are you sure you want to permanently delete category "${deleteCatTarget.name}"?`
+            : ''
         }
-      >
-        <p className="text-[14px] text-[#5F5B75]">
-          Are you sure you want to delete <strong>{deleteCatTarget?.name}</strong>?
-        </p>
-      </Modal>
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          if (!deleteCatTarget) return;
+          setCategories((prev) => prev.filter((c) => c.id !== deleteCatTarget.id));
+          addToast({
+            title: `Deleted category ${deleteCatTarget.name}`,
+            variant: 'info',
+          });
+          setDeleteCatTarget(null);
+        }}
+      />
     </div>
   );
 };
@@ -1777,6 +1796,9 @@ export const AdminCategoriesPage: React.FC = () => {
 // ============================================================================
 export const AdminCertificatesPage: React.FC = () => {
   const { certificates, setCertificates, addToast } = useApp();
+  const [revokeCertTarget, setRevokeCertTarget] = useState<
+    (typeof certificates)[number] | null
+  >(null);
 
   const handleToggleRevoke = (id: string) => {
     setCertificates((prev) =>
@@ -1860,7 +1882,13 @@ export const AdminCertificatesPage: React.FC = () => {
                       <Button
                         size="sm"
                         variant={cert.status === 'Valid' ? 'danger' : 'secondary'}
-                        onClick={() => handleToggleRevoke(cert.id)}
+                        onClick={() => {
+                          if (cert.status === 'Valid') {
+                            setRevokeCertTarget(cert);
+                          } else {
+                            handleToggleRevoke(cert.id);
+                          }
+                        }}
                       >
                         {cert.status === 'Valid' ? 'Revoke' : 'Restore valid'}
                       </Button>
@@ -1872,6 +1900,24 @@ export const AdminCertificatesPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(revokeCertTarget)}
+        onClose={() => setRevokeCertTarget(null)}
+        title="Revoke issued certificate?"
+        description={
+          revokeCertTarget
+            ? `Certificate ${revokeCertTarget.verificationCode} for ${revokeCertTarget.studentName} (${revokeCertTarget.courseTitle}) will immediately show as Revoked on public verification links.`
+            : ''
+        }
+        confirmLabel="Revoke certificate"
+        tone="danger"
+        onConfirm={() => {
+          if (!revokeCertTarget) return;
+          handleToggleRevoke(revokeCertTarget.id);
+          setRevokeCertTarget(null);
+        }}
+      />
     </div>
   );
 };

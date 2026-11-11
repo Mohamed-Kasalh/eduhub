@@ -78,6 +78,7 @@ export const CourseDetailPage: React.FC = () => {
     reviews,
     addCourseReview,
     currentUser,
+    profiles,
     addToast,
   } = useApp();
 
@@ -151,19 +152,35 @@ export const CourseDetailPage: React.FC = () => {
     const found = TOP_INSTRUCTORS.find(
       (inst) => inst.id === course.instructorId || inst.name === course.instructorName
     );
-    return (
-      found || {
-        id: course.instructorId,
-        name: course.instructorName,
-        field: `${course.categoryName} Lead Instructor`,
-        avatar: course.instructorAvatar,
-        learnersCount: course.studentsCount.toLocaleString(),
-        rating: course.rating,
-        coursesCount: 4,
-        bio: 'Senior practitioner and educator with over 10 years of industry experience designing, building, and scaling real-world systems.',
-      }
-    );
-  }, [course]);
+    const liveInstructor =
+      course.instructorId === profiles.instructor.id ||
+      found?.id === profiles.instructor.id
+        ? profiles.instructor
+        : null;
+    if (found) {
+      return liveInstructor
+        ? {
+            ...found,
+            name: liveInstructor.name,
+            avatar: liveInstructor.avatar,
+            field: liveInstructor.title || found.field,
+            bio: liveInstructor.bio || found.bio,
+          }
+        : found;
+    }
+    return {
+      id: course.instructorId,
+      name: liveInstructor?.name || course.instructorName,
+      field: liveInstructor?.title || `${course.categoryName} Lead Instructor`,
+      avatar: liveInstructor?.avatar || course.instructorAvatar,
+      learnersCount: course.studentsCount.toLocaleString(),
+      rating: course.rating,
+      coursesCount: 4,
+      bio:
+        liveInstructor?.bio ||
+        'Senior practitioner and educator with over 10 years of industry experience designing, building, and scaling real-world systems.',
+    };
+  }, [course, profiles.instructor]);
 
   // Related courses (4 cards)
   const relatedCourses = useMemo(() => {
@@ -237,10 +254,8 @@ export const CourseDetailPage: React.FC = () => {
     }
     addCourseReview({
       courseId: course.id,
-      authorName: currentUser?.name || 'Sara Ali',
-      authorAvatar:
-        currentUser?.avatar ||
-        'https://images.unsplash.com/photo-1590650213165-c1fef80648c4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=400',
+      authorName: currentUser?.name || profiles.student.name,
+      authorAvatar: currentUser?.avatar || profiles.student.avatar,
       authorRole: currentUser?.title || 'Enrolled Student',
       rating: reviewRating,
       comment: reviewComment.trim(),

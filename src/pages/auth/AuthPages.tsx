@@ -5,7 +5,6 @@ import {
   User,
   ArrowLeft,
   CheckCircle2,
-  Circle,
   BookOpen,
   Award,
   FileCheck2,
@@ -21,46 +20,14 @@ import {
   PasswordInput,
   OtpInput,
   StatusChip,
+  PasswordStrengthChecklist,
+  evaluatePassword,
+  FormErrorSummary,
+  FormErrorItem,
 } from '../../components/ui';
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp, getRoleDashboardPath } from '../../context/AppContext';
-import { UserRole, ROLE_USERS } from '../../data/mockData';
-
-/**
- * Helper to evaluate password rules and strength score (0..4)
- */
-function evaluatePassword(password: string) {
-  const rules = [
-    { id: 'length', label: '8+ characters', met: password.length >= 8 },
-    { id: 'upper', label: 'Uppercase letter (A-Z)', met: /[A-Z]/.test(password) },
-    { id: 'number', label: 'Number (0-9)', met: /\d/.test(password) },
-    { id: 'symbol', label: 'Symbol (!@#$%^&*)', met: /[^A-Za-z0-9]/.test(password) },
-  ];
-  const score = rules.filter((r) => r.met).length;
-  const labels = ['Too weak', 'Weak', 'Fair', 'Good', 'Strong'];
-  const colors = [
-    'bg-[#E6E1F5]',
-    'bg-[#DC2626]',
-    'bg-[#F59E0B]',
-    'bg-[#2563EB]',
-    'bg-[#16A34A]',
-  ];
-  const textColors = [
-    'text-[#5F5B75]',
-    'text-[#DC2626]',
-    'text-[#F59E0B]',
-    'text-[#2563EB]',
-    'text-[#16A34A]',
-  ];
-  return {
-    rules,
-    score,
-    label: labels[score],
-    barColor: colors[score],
-    textColor: textColors[score],
-    isStrongEnough: score >= 3 && password.length >= 8,
-  };
-}
+import { UserRole } from '../../data/mockData';
 
 /**
  * Helper to mask an email address for OTP display (e.g., sara.ali@eduhub.com -> sa***@eduhub.com)
@@ -74,53 +41,6 @@ function maskEmail(email: string): string {
   const visiblePrefix = local.slice(0, 2);
   return `${visiblePrefix}***${domain}`;
 }
-
-/**
- * Reusable Password Strength Meter & Rules Checklist
- */
-const PasswordStrengthChecklist: React.FC<{ password: string }> = ({ password }) => {
-  const { rules, score, label, barColor, textColor } = evaluatePassword(password);
-
-  return (
-    <div className="rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] p-3.5 space-y-2.5">
-      <div className="flex items-center justify-between text-[12px]">
-        <span className="font-semibold text-[#5F5B75]">Password strength</span>
-        <span className={`font-bold ${textColor}`}>{password ? label : 'Enter a password'}</span>
-      </div>
-
-      {/* 4-segment bar */}
-      <div className="grid grid-cols-4 gap-1.5">
-        {[1, 2, 3, 4].map((seg) => (
-          <div
-            key={seg}
-            className={`h-1.5 rounded-full transition-colors duration-200 ${
-              password && score >= seg ? barColor : 'bg-[#E6E1F5]'
-            }`}
-          />
-        ))}
-      </div>
-
-      {/* 4 rules checklist */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
-        {rules.map((rule) => (
-          <div
-            key={rule.id}
-            className={`flex items-center gap-1.5 text-[12px] ${
-              rule.met ? 'text-[#16A34A] font-semibold' : 'text-[#5F5B75]'
-            }`}
-          >
-            {rule.met ? (
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />
-            ) : (
-              <Circle className="w-3.5 h-3.5 text-[#5F5B75]/50 shrink-0" />
-            )}
-            <span>{rule.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 /**
  * Split Authentication Layout:
@@ -226,7 +146,7 @@ const AuthSplitLayout: React.FC<{
  * - Demo redirect by role: email containing "admin" -> Admin, "instructor" -> Instructor, "supervisor" -> Supervisor, anything else -> Student.
  */
 export const LoginPage: React.FC = () => {
-  const { setRole, addToast } = useApp();
+  const { setRole, profiles, addToast } = useApp();
   const navigate = useNavigate();
   const [email, setEmail] = useState('sara.ali@eduhub.com');
   const [password, setPassword] = useState('EduHub#2025');
@@ -276,7 +196,7 @@ export const LoginPage: React.FC = () => {
       setLoading(false);
       setRole(targetRole);
       addToast({
-        title: `Welcome back, ${ROLE_USERS[targetRole].name}!`,
+        title: `Welcome back, ${profiles[targetRole].name}!`,
         message: `Signed in as ${targetRole} (${trimmedEmail}).`,
         variant: 'success',
       });
@@ -468,6 +388,17 @@ export const SignupPage: React.FC = () => {
     confirmPassword?: string;
     terms?: string;
   }>({});
+  const [summaryKey, setSummaryKey] = useState(0);
+
+  const errorSummaryItems: FormErrorItem[] = [
+    ...(errors.name ? [{ field: 'Full name', message: errors.name, targetId: 'signup-name' }] : []),
+    ...(errors.email ? [{ field: 'Email address', message: errors.email, targetId: 'signup-email' }] : []),
+    ...(errors.password ? [{ field: 'Password', message: errors.password, targetId: 'signup-password' }] : []),
+    ...(errors.confirmPassword
+      ? [{ field: 'Confirm password', message: errors.confirmPassword, targetId: 'signup-confirm-password' }]
+      : []),
+    ...(errors.terms ? [{ field: 'Terms of Service', message: errors.terms, targetId: 'signup-terms' }] : []),
+  ];
 
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault();
@@ -501,7 +432,10 @@ export const SignupPage: React.FC = () => {
     }
 
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
+    if (Object.keys(nextErrors).length > 0) {
+      setSummaryKey((k) => k + 1);
+      return;
+    }
 
     setLoading(true);
     setTimeout(() => {
@@ -534,7 +468,10 @@ export const SignupPage: React.FC = () => {
         </div>
 
         <form onSubmit={handleSignup} noValidate className="space-y-4">
+          <FormErrorSummary errors={errorSummaryItems} summaryKey={summaryKey} />
+
           <TextInput
+            id="signup-name"
             label="Full name"
             value={name}
             onChange={(e) => {
@@ -548,6 +485,7 @@ export const SignupPage: React.FC = () => {
           />
 
           <TextInput
+            id="signup-email"
             label="Email address"
             type="email"
             value={email}
@@ -623,6 +561,7 @@ export const SignupPage: React.FC = () => {
           </div>
 
           <PasswordInput
+            id="signup-password"
             label="Password"
             value={password}
             onChange={(e) => {
@@ -638,6 +577,7 @@ export const SignupPage: React.FC = () => {
           <PasswordStrengthChecklist password={password} />
 
           <PasswordInput
+            id="signup-confirm-password"
             label="Confirm password"
             value={confirmPassword}
             onChange={(e) => {
@@ -655,6 +595,7 @@ export const SignupPage: React.FC = () => {
           <div className="space-y-1">
             <label className="flex items-start gap-2.5 text-[14px] text-[#5F5B75] cursor-pointer select-none">
               <input
+                id="signup-terms"
                 type="checkbox"
                 checked={agreedTerms}
                 onChange={(e) => {
@@ -701,12 +642,12 @@ export const SignupPage: React.FC = () => {
  *   success (check animation + cat mascot then redirect).
  */
 export const VerifyOtpPage: React.FC = () => {
-  const { setRole, addToast } = useApp();
+  const { setRole, profiles, addToast } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const stateData = (location.state as { email?: string; role?: UserRole } | null) || null;
 
-  const rawEmail = stateData?.email || ROLE_USERS.student.email;
+  const rawEmail = stateData?.email || profiles.student.email;
   const targetRole: Exclude<UserRole, 'guest'> =
     stateData?.role && stateData.role !== 'guest' ? stateData.role : 'student';
   const masked = maskEmail(rawEmail);

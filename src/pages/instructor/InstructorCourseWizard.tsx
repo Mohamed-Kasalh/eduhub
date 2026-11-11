@@ -32,6 +32,8 @@ import {
   StatusChip,
   Breadcrumbs,
   ProgressBar,
+  FormErrorSummary,
+  FormErrorItem,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS, Course } from '../../data/mockData';
@@ -70,13 +72,15 @@ function formatTotalMinutes(mins: number): string {
 }
 
 export const InstructorCreateCoursePage: React.FC = () => {
-  const { categories, setCourses, addToast } = useApp();
+  const { categories, setCourses, currentUser, addToast } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   const [activeStep, setActiveStep] = useState<number>(0);
   const [autosaveStatus, setAutosaveStatus] = useState<'saved' | 'saving'>('saved');
   const [lastAutosaved, setLastAutosaved] = useState<string>('Just now');
+  const [wizardErrors, setWizardErrors] = useState<FormErrorItem[]>([]);
+  const [wizardSummaryKey, setWizardSummaryKey] = useState<number>(0);
 
   // Step a. Basics state
   const [title, setTitle] = useState(
@@ -414,15 +418,81 @@ export const InstructorCreateCoursePage: React.FC = () => {
 
   const missingCount = checklistItems.filter((i) => !i.done).length;
 
+  const validateWizard = (targetStatus: 'Draft' | 'Pending review'): FormErrorItem[] => {
+    const errs: FormErrorItem[] = [];
+    if (title.trim().length < 6) {
+      errs.push({
+        field: 'Course title',
+        message: 'Course title must be at least 6 characters long.',
+        targetId: 'wizard-title',
+      });
+    }
+    if (pricingMode === 'paid' && !(Number(priceAmount) > 0)) {
+      errs.push({
+        field: 'Course price',
+        message: 'Enter a valid course price greater than $0.00.',
+        targetId: 'wizard-price',
+      });
+    }
+    if (targetStatus === 'Pending review') {
+      if (description.trim().length < 20) {
+        errs.push({
+          field: 'Full course description',
+          message: 'Full course description must be at least 20 characters.',
+          targetId: 'wizard-description',
+        });
+      }
+      if (
+        coverUploadState !== 'success' ||
+        videoUploadState !== 'success' ||
+        simulateMissingItems
+      ) {
+        errs.push({
+          field: 'Media (Step b)',
+          message: 'Upload both a 16:9 cover image and a demo video before submitting.',
+        });
+      }
+      if (curriculumTotals.totalSections < 2 || curriculumTotals.totalLessons < 3) {
+        errs.push({
+          field: 'Curriculum (Step c)',
+          message: 'Include at least 2 curriculum sections and 3 video lessons.',
+        });
+      }
+      if (examPassScore < 50 || simulateMissingItems) {
+        errs.push({
+          field: 'Final exam (Step e)',
+          message: 'Link a Question Bank with at least 20 questions and 50%+ pass score.',
+        });
+      }
+    }
+    return errs;
+  };
+
   const handleSaveCourse = (targetStatus: 'Draft' | 'Pending review') => {
+    const errs = validateWizard(targetStatus);
+    if (errs.length > 0) {
+      setWizardErrors(errs);
+      setWizardSummaryKey((k) => k + 1);
+      addToast({
+        title:
+          targetStatus === 'Draft'
+            ? 'Check required course details before saving'
+            : 'Resolve missing requirements before submitting',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    setWizardErrors([]);
+    const instructor = currentUser || ROLE_USERS.instructor;
     const cat = categories.find((c) => c.id === categoryId) || categories[0];
     const created: Course = {
       id: `course-${Date.now()}`,
       title: title.trim() || 'Untitled Instructor Course',
       subtitle: subtitle.trim(),
-      instructorId: ROLE_USERS.instructor.id,
-      instructorName: ROLE_USERS.instructor.name,
-      instructorAvatar: ROLE_USERS.instructor.avatar,
+      instructorId: instructor.id,
+      instructorName: instructor.name,
+      instructorAvatar: instructor.avatar,
       categoryId: cat.id,
       categoryName: cat.name,
       thumbnail: coverPreviewUrl,
@@ -518,7 +588,10 @@ export const InstructorCreateCoursePage: React.FC = () => {
               <button
                 key={st.key}
                 type="button"
-                onClick={() => setActiveStep(idx)}
+                onClick={() => {
+                  setWizardErrors([]);
+                  setActiveStep(idx);
+                }}
                 className={`p-3 rounded-[10px] border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
                   isCurrent
                     ? 'bg-[#F3EFFF] border-[#6D4AE0] shadow-purple-sm'
@@ -558,6 +631,8 @@ export const InstructorCreateCoursePage: React.FC = () => {
 
       {/* STEP CONTENT PANEL */}
       <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 sm:p-8 shadow-purple-sm space-y-6">
+        <FormErrorSummary errors={wizardErrors} summaryKey={wizardSummaryKey} />
+
         {/* ====================================================================
             STEP A: BASICS (title, subtitle, category, level, language, description, tags)
             ==================================================================== */}
@@ -574,14 +649,16 @@ export const InstructorCreateCoursePage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="md:col-span-2 space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-title" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Course title *
                 </label>
                 <input
+                  id="wizard-title"
                   type="text"
                   value={title}
                   onChange={(e) => {
                     setTitle(e.target.value);
+                    if (wizardErrors.length > 0) setWizardErrors([]);
                     triggerAutosave();
                   }}
                   placeholder="e.g. Complete React Developer Course"
@@ -633,7 +710,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                   <select
                     value={level}
                     onChange={(e) => {
-                      setLevel(e.target.value as any);
+                      setLevel(e.target.value as Course['level']);
                       triggerAutosave();
                     }}
                     className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5] focus:border-[#6D4AE0] focus:outline-none text-[15px] text-[#1E1B2E]"
@@ -664,14 +741,16 @@ export const InstructorCreateCoursePage: React.FC = () => {
               </div>
 
               <div className="md:col-span-2 space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-description" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Full course description
                 </label>
                 <textarea
+                  id="wizard-description"
                   rows={4}
                   value={description}
                   onChange={(e) => {
                     setDescription(e.target.value);
+                    if (wizardErrors.length > 0) setWizardErrors([]);
                     triggerAutosave();
                   }}
                   className="w-full p-3.5 rounded-[10px] bg-white border border-[#E6E1F5] focus:border-[#6D4AE0] focus:outline-none text-[15px] text-[#1E1B2E]"
@@ -1510,17 +1589,19 @@ export const InstructorCreateCoursePage: React.FC = () => {
             {pricingMode === 'paid' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl pt-2">
                 <div className="space-y-1.5">
-                  <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                  <label htmlFor="wizard-price" className="block text-[14px] font-bold text-[#1E1B2E]">
                     Course price (USD)
                   </label>
                   <div className="relative">
                     <DollarSign className="w-4 h-4 text-[#6D4AE0] absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
+                      id="wizard-price"
                       type="number"
                       step="0.01"
                       value={priceAmount}
                       onChange={(e) => {
                         setPriceAmount(e.target.value);
+                        if (wizardErrors.length > 0) setWizardErrors([]);
                         triggerAutosave();
                       }}
                       className="w-full h-11 pl-9 pr-4 rounded-[10px] bg-white border border-[#E6E1F5] font-display font-bold text-[18px] text-[#1E1B2E] focus:outline-none focus:border-[#6D4AE0]"
@@ -1773,7 +1854,38 @@ export const InstructorCreateCoursePage: React.FC = () => {
               <Button
                 variant="primary"
                 rightIcon={<ChevronRight className="w-4 h-4" />}
-                onClick={() => setActiveStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1))}
+                onClick={() => {
+                  const stepErrs: FormErrorItem[] = [];
+                  if (activeStep === 0) {
+                    if (title.trim().length < 6) {
+                      stepErrs.push({
+                        field: 'Course title',
+                        message: 'Course title must be at least 6 characters long.',
+                        targetId: 'wizard-title',
+                      });
+                    }
+                    if (description.trim().length < 20) {
+                      stepErrs.push({
+                        field: 'Full course description',
+                        message: 'Full course description must be at least 20 characters.',
+                        targetId: 'wizard-description',
+                      });
+                    }
+                  } else if (activeStep === 3 && pricingMode === 'paid' && !(Number(priceAmount) > 0)) {
+                    stepErrs.push({
+                      field: 'Course price',
+                      message: 'Enter a valid course price greater than $0.00.',
+                      targetId: 'wizard-price',
+                    });
+                  }
+                  if (stepErrs.length > 0) {
+                    setWizardErrors(stepErrs);
+                    setWizardSummaryKey((k) => k + 1);
+                    return;
+                  }
+                  setWizardErrors([]);
+                  setActiveStep((s) => Math.min(WIZARD_STEPS.length - 1, s + 1));
+                }}
               >
                 Continue to Step {WIZARD_STEPS[activeStep + 1].letter.toUpperCase()}
               </Button>
@@ -1781,7 +1893,6 @@ export const InstructorCreateCoursePage: React.FC = () => {
               <Button
                 variant="primary"
                 size="lg"
-                disabled={missingCount > 0}
                 leftIcon={<FileCheck2 className="w-5 h-5" />}
                 onClick={() => handleSaveCourse('Pending review')}
               >

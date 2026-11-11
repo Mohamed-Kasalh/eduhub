@@ -11,7 +11,6 @@ import {
   Download,
   ExternalLink,
   Bell,
-  CheckCheck,
   BarChart3,
   ArrowRight,
   Lock,
@@ -29,9 +28,6 @@ import {
   StatusChip,
   AchievementStickerBadge,
   Breadcrumbs,
-  TextInput,
-  PasswordInput,
-  TextareaInput,
   Avatar,
   EmptyState,
 } from '../../components/ui';
@@ -52,6 +48,7 @@ export { CertificatesListPage, CertificateDetailPage } from './CertificatePages'
 
 export const StudentDashboardPage: React.FC = () => {
   const {
+    currentUser,
     courses,
     exams,
     certificates,
@@ -60,7 +57,7 @@ export const StudentDashboardPage: React.FC = () => {
     examBestScores,
   } = useApp();
   const navigate = useNavigate();
-  const student = ROLE_USERS.student;
+  const student = currentUser || ROLE_USERS.student;
 
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(5);
 
@@ -80,7 +77,9 @@ export const StudentDashboardPage: React.FC = () => {
   );
 
   const inProgressCoursesCount = enrolledCourses.length - completedCoursesCount;
-  const myCertificatesCount = certificates.filter((c) => c.studentName === 'Sara Ali').length;
+  const myCertificatesCount = certificates.filter(
+    (c) => c.studentId === student.id || c.studentName === student.name
+  ).length;
 
   const primaryCourse = courses.find((c) => c.id === 'course-1') || enrolledCourses[0] || courses[0];
   const primaryStats = getCourseProgressStats(primaryCourse.id);
@@ -106,7 +105,7 @@ export const StudentDashboardPage: React.FC = () => {
             <StatusChip label={`${student.streakDays}-day learning streak`} variant="gold" />
           </div>
           <h1 className="text-[34px] sm:text-[40px] font-display font-bold text-[#1E1B2E] leading-tight">
-            Welcome back, Sara
+            Welcome back, {student.name.split(' ')[0]}
           </h1>
           <p className="text-[16px] text-[#5F5B75]">
             You have completed {primaryStats.completedLessons} of {primaryStats.totalLessons}{' '}
@@ -1403,152 +1402,6 @@ export const StudentCourseProgressPage: React.FC = () => {
           </div>
         </div>
       </div>
-    </div>
-  );
-};
-
-export const ProfilePage: React.FC = () => {
-  const { currentUser, role, addToast } = useApp();
-  const user = currentUser || ROLE_USERS.student;
-  const [name, setName] = useState(user.name);
-  const [title, setTitle] = useState(user.title);
-  const [bio, setBio] = useState(user.bio);
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    addToast({
-      title: 'Profile changes saved',
-      message: 'Your public bio and display details have been updated.',
-      variant: 'success',
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      <Breadcrumbs items={[{ label: 'Profile & account settings' }]} />
-
-      <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 sm:p-8 shadow-purple-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="flex items-center gap-4">
-          <Avatar src={user.avatar} name={user.name} size="xl" status="online" />
-          <div>
-            <StatusChip label={`${role} account`} variant="primary" />
-            <h1 className="text-[32px] font-display font-bold text-[#1E1B2E] mt-1">
-              {user.name}
-            </h1>
-            <p className="text-[14px] text-[#5F5B75]">
-              {user.email} • Joined {user.joinedAt}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <form
-        onSubmit={handleSave}
-        className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 sm:p-8 shadow-purple-sm space-y-5"
-      >
-        <h2 className="text-[24px] font-display font-semibold text-[#1E1B2E]">
-          Personal information
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <TextInput
-            label="Full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <TextInput
-            label="Professional headline"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-        <TextareaInput
-          label="Short biography"
-          value={bio}
-          onChange={(e) => setBio(e.target.value)}
-          maxLengthCount={300}
-        />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-[#E6E1F5]">
-          <PasswordInput label="New password (optional)" placeholder="Leave blank to keep current" />
-          <PasswordInput label="Confirm new password" placeholder="Re-enter new password" />
-        </div>
-        <div className="flex justify-end">
-          <Button type="submit" variant="primary">
-            Save changes
-          </Button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
-export const NotificationsPage: React.FC = () => {
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useApp();
-
-  return (
-    <div className="space-y-6">
-      <Breadcrumbs items={[{ label: 'Notifications' }]} />
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-[40px] font-display font-bold text-[#1E1B2E]">
-            Notifications
-          </h1>
-          <p className="text-[16px] text-[#5F5B75]">
-            Course replies, exam unlocks, certificate issuances, and moderation alerts.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          leftIcon={<CheckCheck className="w-4 h-4" />}
-          onClick={markAllNotificationsRead}
-        >
-          Mark all as read
-        </Button>
-      </div>
-
-      {notifications.length === 0 ? (
-        <EmptyState
-          title="You are all caught up"
-          description="New course announcements and instructor replies will appear here."
-          actionLabel="Browse courses"
-          actionTo="/courses"
-        />
-      ) : (
-        <div className="rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-sm divide-y divide-[#E6E1F5]">
-          {notifications.map((n) => (
-            <div
-              key={n.id}
-              className={`p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                !n.read ? 'bg-[#F3EFFF]/40' : ''
-              }`}
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center shrink-0">
-                  <Bell className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-[17px] font-display font-bold text-[#1E1B2E]">
-                      {n.title}
-                    </h3>
-                    {!n.read && <StatusChip label="New" variant="primary" />}
-                  </div>
-                  <p className="text-[14px] text-[#5F5B75] mt-0.5">{n.message}</p>
-                  <p className="text-[12px] text-[#5F5B75]/80 mt-1">{n.createdAt}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Link to={n.link} onClick={() => markNotificationRead(n.id)}>
-                  <Button size="sm" variant="secondary">
-                    Open item
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
