@@ -996,7 +996,26 @@ export const InstructorCreateCoursePage: React.FC = () => {
         <QueryErrorState
           title="Could not load course for editing"
           error={courseDetailQuery.error}
-          onRetry={() => void courseDetailQuery.refetch()}
+          onRetry={() => {
+            void courseDetailQuery.refetch();
+            void categoriesQuery.refetch();
+            void publicConfigQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (categoriesQuery.isError || publicConfigQuery.isError) {
+    return (
+      <div className="space-y-6 pb-12">
+        <QueryErrorState
+          title="Could not load course builder options"
+          error={categoriesQuery.error ?? publicConfigQuery.error}
+          onRetry={() => {
+            void categoriesQuery.refetch();
+            void publicConfigQuery.refetch();
+          }}
         />
       </div>
     );
