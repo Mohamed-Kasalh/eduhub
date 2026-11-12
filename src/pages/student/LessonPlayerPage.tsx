@@ -85,6 +85,7 @@ export const LessonPlayerPage: React.FC = () => {
 
   const lessonDetailQuery = useLessonDetail(resolvedCourseId, resolvedLessonId);
   const courseProgressQuery = useCourseProgress(resolvedCourseId);
+  const detail = lessonDetailQuery.data;
 
   const [commentSort, setCommentSort] = useState<'newest' | 'top'>('newest');
   const [commentLimit, setCommentLimit] = useState<number>(4);
@@ -92,7 +93,7 @@ export const LessonPlayerPage: React.FC = () => {
   const commentsQuery = useLessonComments(
     resolvedLessonId,
     { sort: commentSort, page: 1, limit: commentLimit },
-    Boolean(resolvedLessonId)
+    Boolean(resolvedLessonId) && Boolean(detail)
   );
 
   const saveProgressMutation = useSaveLessonProgressMutation();
@@ -107,7 +108,6 @@ export const LessonPlayerPage: React.FC = () => {
   const toggleLikeReplyMutation = useToggleLikeReplyMutation(resolvedLessonId);
   const reportCommentMutation = useReportCommentMutation();
 
-  const detail = lessonDetailQuery.data;
   const activeLesson: MappedPlayerLesson | undefined = detail?.activeLesson;
 
   usePageTitle(
@@ -443,7 +443,7 @@ export const LessonPlayerPage: React.FC = () => {
 
   if (lessonDetailQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-[#FAF8FF] p-4 sm:p-8 space-y-6">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAF8FF] p-4 sm:p-8 space-y-6 focus:outline-none">
         <Skeleton className="w-64" />
         <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-8 space-y-4">
@@ -455,7 +455,7 @@ export const LessonPlayerPage: React.FC = () => {
             <Skeleton variant="card" />
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -467,7 +467,7 @@ export const LessonPlayerPage: React.FC = () => {
       return <Forbidden403Page />;
     }
     return (
-      <div className="min-h-screen bg-[#FAF8FF] p-6">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAF8FF] p-6 focus:outline-none">
         <div className="max-w-3xl mx-auto">
           <QueryErrorState
             error={lessonDetailQuery.error}
@@ -477,7 +477,7 @@ export const LessonPlayerPage: React.FC = () => {
             }}
           />
         </div>
-      </div>
+      </main>
     );
   }
 

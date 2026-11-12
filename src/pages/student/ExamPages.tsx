@@ -292,7 +292,7 @@ export const ExamPage: React.FC = () => {
 
   if (overviewQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-[#FAF8FF] px-4 sm:px-6 py-10">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAF8FF] px-4 sm:px-6 py-10 focus:outline-none">
         <div className="max-w-[1000px] mx-auto space-y-6">
           <Skeleton variant="text" className="w-64 h-6" />
           <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-8 space-y-6">
@@ -305,7 +305,7 @@ export const ExamPage: React.FC = () => {
             <Skeleton variant="card" className="h-20 w-full rounded-[12px]" />
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
@@ -317,7 +317,7 @@ export const ExamPage: React.FC = () => {
       return <Forbidden403Page requiredRoles={['student']} />;
     }
     return (
-      <div className="min-h-screen bg-[#FAF8FF] flex items-center justify-center px-4 py-12">
+      <main id="main-content" tabIndex={-1} className="min-h-screen bg-[#FAF8FF] flex items-center justify-center px-4 py-12 focus:outline-none">
         <div className="max-w-lg w-full">
           <QueryErrorState
             error={overviewQuery.error}
@@ -325,7 +325,7 @@ export const ExamPage: React.FC = () => {
             onRetry={() => void overviewQuery.refetch()}
           />
         </div>
-      </div>
+      </main>
     );
   }
 
