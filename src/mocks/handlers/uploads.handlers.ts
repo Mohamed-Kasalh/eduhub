@@ -1,7 +1,14 @@
 import { http } from 'msw';
 import { UploadKindSchema } from '../../api/dto';
 import { getMockDb, nextDbId, nowUtcIso, persistMockDb } from '../db';
-import { apiEndpoint, jsonError, jsonOk, requireAuth, simulateNetwork } from '../helpers';
+import {
+  apiEndpoint,
+  isUploadedBlobLike,
+  jsonError,
+  jsonOk,
+  requireAuth,
+  simulateNetwork,
+} from '../helpers';
 
 const ALLOWED_MIMES: Record<string, string[]> = {
   avatar: ['image/jpeg', 'image/png'],
@@ -55,12 +62,14 @@ export const uploadsHandlers = [
     }
 
     const fileEntry = formData.get('file');
-    if (!(fileEntry instanceof Blob)) {
+    if (!isUploadedBlobLike(fileEntry)) {
       return jsonError(400, 'BAD_REQUEST', 'Missing file field in upload payload.');
     }
 
     const filename =
-      fileEntry instanceof File ? fileEntry.name : `${kind}-${Date.now()}.bin`;
+      typeof fileEntry.name === 'string' && fileEntry.name.length > 0
+        ? fileEntry.name
+        : `${kind}-${Date.now()}.bin`;
     const mimeType = fileEntry.type || 'application/octet-stream';
     const sizeBytes = fileEntry.size;
 

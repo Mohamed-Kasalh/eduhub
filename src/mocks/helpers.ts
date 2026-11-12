@@ -2,13 +2,14 @@ import { delay, HttpResponse } from 'msw';
 import type { z } from 'zod';
 import { apiConfig, resolveApiPath } from '../api/config';
 import type { AuthenticatedRoleDto, PaginationMetaDto } from '../api/dto';
-import { getMockDb, nowUtcIso } from './db';
+import { getMockDb, nextDbId, nowUtcIso } from './db';
 import type { MockUserRecord } from './seed';
 
 interface DecodedDemoToken {
   sub: string;
   role: AuthenticatedRoleDto;
   sid: string;
+  jti: string;
   type: 'access' | 'refresh';
   iat: number;
   exp: number;
@@ -45,7 +46,7 @@ function fromBase64Url(encoded: string): string | null {
 export function encodeDemoJwt(payload: DecodedDemoToken): string {
   const header = toBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const body = toBase64Url(JSON.stringify(payload));
-  const sig = toBase64Url(`eduhub-sig-${payload.sub}-${payload.iat}`);
+  const sig = toBase64Url(`eduhub-sig-${payload.sub}-${payload.iat}-${payload.jti}`);
   return `${header}.${body}.${sig}`;
 }
 
@@ -86,6 +87,7 @@ export function issueSessionTokens(
     sub: userRecord.user.id,
     role: userRecord.user.role,
     sid,
+    jti: nextDbId('tok'),
     type: 'access',
     iat: nowSec,
     exp: nowSec + ACCESS_TTL_SECONDS,
@@ -95,6 +97,7 @@ export function issueSessionTokens(
     sub: userRecord.user.id,
     role: userRecord.user.role,
     sid,
+    jti: nextDbId('tok'),
     type: 'refresh',
     iat: nowSec,
     exp: nowSec + REFRESH_TTL_SECONDS,
@@ -324,4 +327,25 @@ export function paginate<T>(
       totalPages,
     },
   };
+}
+
+/** Cross-realm representation of a Blob/File extracted from `request.formData()`. */
+export interface UploadedBlobLike {
+  readonly size: number;
+  readonly type: string;
+  readonly name?: string;
+  text(): Promise<string>;
+}
+
+/** Checks whether a `FormData` entry behaves like a Blob/File across jsdom and Node realms. */
+export function isUploadedBlobLike(entry: unknown): entry is UploadedBlobLike {
+  if (entry === null || typeof entry !== 'object') {
+    return false;
+  }
+  const candidate = entry as Partial<UploadedBlobLike>;
+  return (
+    typeof candidate.size === 'number' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.text === 'function'
+  );
 }

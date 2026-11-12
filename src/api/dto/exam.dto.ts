@@ -186,28 +186,29 @@ export type ExamAttemptsListResponseDto = z.infer<
 /*  Instructor Question Bank & Exam Settings Requests                         */
 /* -------------------------------------------------------------------------- */
 
-export const CreateQuestionRequestSchema = z
-  .object({
-    sectionId: IdSchema,
-    type: QuestionTypeSchema,
-    prompt: z
-      .string()
-      .trim()
-      .min(8, 'Question prompt must be at least 8 characters long.'),
-    options: z
-      .array(z.string().trim().min(1, 'Options cannot be empty.'))
-      .min(2, 'At least 2 options are required.')
-      .max(6, 'Maximum 6 options allowed.'),
-    correctIndices: z
-      .array(z.number().int().nonnegative())
-      .min(1, 'Select at least one correct answer.'),
-    difficulty: QuestionDifficultySchema,
-    points: z.number().int().min(1).max(25),
-    explanation: z.string().trim().default('Verified instructor explanation.'),
-    imageUrl: z.string().nullable().optional(),
-    imageCaption: z.string().nullable().optional(),
-  })
-  .superRefine((val, ctx) => {
+const QuestionFieldsBaseSchema = z.object({
+  sectionId: IdSchema,
+  type: QuestionTypeSchema,
+  prompt: z
+    .string()
+    .trim()
+    .min(8, 'Question prompt must be at least 8 characters long.'),
+  options: z
+    .array(z.string().trim().min(1, 'Options cannot be empty.'))
+    .min(2, 'At least 2 options are required.')
+    .max(6, 'Maximum 6 options allowed.'),
+  correctIndices: z
+    .array(z.number().int().nonnegative())
+    .min(1, 'Select at least one correct answer.'),
+  difficulty: QuestionDifficultySchema,
+  points: z.number().int().min(1).max(25),
+  explanation: z.string().trim().default('Verified instructor explanation.'),
+  imageUrl: z.string().nullable().optional(),
+  imageCaption: z.string().nullable().optional(),
+});
+
+export const CreateQuestionRequestSchema = QuestionFieldsBaseSchema.superRefine(
+  (val, ctx) => {
     const outOfRange = val.correctIndices.some((idx) => idx >= val.options.length);
     if (outOfRange) {
       ctx.addIssue({
@@ -230,10 +231,11 @@ export const CreateQuestionRequestSchema = z
         message: 'True/False questions must have exactly 2 options.',
       });
     }
-  });
+  }
+);
 export type CreateQuestionRequestDto = z.infer<typeof CreateQuestionRequestSchema>;
 
-export const UpdateQuestionRequestSchema = CreateQuestionRequestSchema.partial();
+export const UpdateQuestionRequestSchema = QuestionFieldsBaseSchema.partial();
 export type UpdateQuestionRequestDto = z.infer<typeof UpdateQuestionRequestSchema>;
 
 export const BulkDeleteQuestionsRequestSchema = z.object({

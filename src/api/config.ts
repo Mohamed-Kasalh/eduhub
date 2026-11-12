@@ -25,7 +25,9 @@ export const apiConfig: ApiConfig = {
   mockPersist: import.meta.env.VITE_MOCK_PERSIST === 'true',
   mockErrorRate: parseErrorRate(import.meta.env.VITE_MOCK_ERROR_RATE),
   timeoutMs: 15_000,
-  isDev: Boolean(import.meta.env.DEV),
+  get isDev(): boolean {
+    return Boolean(import.meta.env.DEV);
+  },
 };
 
 /** Joins a relative API endpoint path onto the configured base URL. */

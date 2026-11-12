@@ -10,6 +10,7 @@ import {
 import { getMockDb, nextDbId, nowUtcIso, persistMockDb } from '../db';
 import {
   apiEndpoint,
+  isUploadedBlobLike,
   jsonError,
   jsonOk,
   paginate,
@@ -242,7 +243,7 @@ export const questionsHandlers = [
       if (contentType.includes('multipart/form-data')) {
         const fd = await request.formData();
         const file = fd.get('file');
-        if (!(file instanceof Blob)) {
+        if (!isUploadedBlobLike(file)) {
           return jsonError(400, 'BAD_REQUEST', 'Missing CSV file.');
         }
         csvText = await file.text();
