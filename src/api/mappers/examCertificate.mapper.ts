@@ -12,11 +12,25 @@ import type {
 } from '../dto-types-bridge';
 import { formatDate, formatDuration } from '../../lib/format';
 
-const DIFFICULTY_LABELS: Record<QuestionDifficultyDto, 'Easy' | 'Medium' | 'Hard'> = {
+export const DIFFICULTY_LABELS: Record<QuestionDifficultyDto, 'Easy' | 'Medium' | 'Hard'> = {
   easy: 'Easy',
   medium: 'Medium',
   hard: 'Hard',
 };
+
+const LABEL_TO_DIFFICULTY: Record<string, QuestionDifficultyDto> = {
+  Easy: 'easy',
+  Medium: 'medium',
+  Hard: 'hard',
+  easy: 'easy',
+  medium: 'medium',
+  hard: 'hard',
+};
+
+/** Converts UI difficulty label to API `QuestionDifficultyDto`. */
+export function toQuestionDifficultyDto(label: string): QuestionDifficultyDto | undefined {
+  return LABEL_TO_DIFFICULTY[label];
+}
 
 const CERTIFICATE_GRADE_LABELS: Record<CertificateGradeDto, 'Distinction' | 'Merit' | 'Pass'> = {
   distinction: 'Distinction',

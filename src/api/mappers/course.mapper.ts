@@ -68,6 +68,17 @@ export const COURSE_STATUS_LABELS: Record<CourseStatusDto, CourseStatus> = {
   rejected: 'Rejected',
 };
 
+const LABEL_TO_COURSE_STATUS: Record<string, CourseStatusDto> = {
+  Draft: 'draft',
+  'Pending review': 'pending_review',
+  Published: 'published',
+  Rejected: 'rejected',
+  draft: 'draft',
+  pending_review: 'pending_review',
+  published: 'published',
+  rejected: 'rejected',
+};
+
 export const COURSE_LANGUAGE_LABELS: Record<CourseLanguageDto, string> = {
   en: 'English',
   en_ar_cc: 'English & Arabic CC',
@@ -112,6 +123,11 @@ export function toCourseLevelDto(label: string): CourseLevelDto | undefined {
 /** Converts UI language label to API `CourseLanguageDto`. */
 export function toCourseLanguageDto(label: string): CourseLanguageDto | undefined {
   return LABEL_TO_COURSE_LANGUAGE[label];
+}
+
+/** Converts UI course status label to API `CourseStatusDto`. */
+export function toCourseStatusDto(label: string): CourseStatusDto | undefined {
+  return LABEL_TO_COURSE_STATUS[label];
 }
 
 /** Converts UI duration filter string (`"0-2h"`, etc.) to API `DurationBucketDto`. */
