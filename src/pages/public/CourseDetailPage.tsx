@@ -84,18 +84,26 @@ export const CourseDetailPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
 
   const detailQuery = useCourseDetail(id);
+  const detail = detailQuery.data;
+  const course = detail?.course;
+  usePageTitle(course?.title ?? 'Course Details');
+
   const [reviewsLimit, setReviewsLimit] = useState<number>(3);
-  const reviewsQuery = useCourseReviews(id, { page: 1, limit: reviewsLimit });
-  const relatedQuery = useRelatedCourses(id, 4);
+  const reviewsQuery = useCourseReviews(
+    id,
+    { page: 1, limit: reviewsLimit },
+    Boolean(id) && Boolean(detail)
+  );
+  const relatedQuery = useRelatedCourses(
+    id,
+    4,
+    Boolean(id) && Boolean(detail)
+  );
 
   const enrollMutation = useEnrollCourseMutation();
   const createReviewMutation = useCreateCourseReviewMutation(id ?? '');
   const helpfulMutation = useToggleReviewHelpfulMutation(id ?? '');
   const toggleWishlistMutation = useToggleWishlistMutation();
-
-  const detail = detailQuery.data;
-  const course = detail?.course;
-  usePageTitle(course?.title ?? 'Course Details');
 
   const [cardStateOverride, setCardStateOverride] = useState<EnrollmentCardState | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTabId>('overview');

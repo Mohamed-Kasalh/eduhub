@@ -86,7 +86,7 @@ export function useCourseDetail(courseId: string | undefined) {
 }
 
 /** Fetches related courses for a course detail page. */
-export function useRelatedCourses(courseId: string | undefined, limit = 4) {
+export function useRelatedCourses(courseId: string | undefined, limit = 4, enabled = true) {
   return useQuery({
     queryKey: queryKeys.courses.related(courseId ?? ''),
     queryFn: async () => {
@@ -94,14 +94,15 @@ export function useRelatedCourses(courseId: string | undefined, limit = 4) {
       const response = await catalogService.getRelatedCourses(courseId, limit);
       return response.data.map((dto) => mapCourseDtoToCourse(dto));
     },
-    enabled: Boolean(courseId),
+    enabled: Boolean(courseId) && enabled,
   });
 }
 
 /** Lists paginated reviews for a course with `keepPreviousData`. */
 export function useCourseReviews(
   courseId: string | undefined,
-  params?: { page?: number; limit?: number }
+  params?: { page?: number; limit?: number },
+  enabled = true
 ) {
   const page = params?.page ?? 1;
   const limit = params?.limit ?? 10;
@@ -120,7 +121,7 @@ export function useCourseReviews(
       };
     },
     placeholderData: keepPreviousData,
-    enabled: Boolean(courseId),
+    enabled: Boolean(courseId) && enabled,
   });
 }
 
