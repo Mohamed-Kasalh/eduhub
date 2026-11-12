@@ -361,7 +361,10 @@ export const SupervisorCommentsPage: React.FC = () => {
   const deleteMutation = useDeleteCommentMutation();
   const bulkApproveMutation = useBulkApproveCommentsMutation();
 
-  const tabItems = commentsQuery.data?.items ?? [];
+  const tabItems = useMemo(
+    () => commentsQuery.data?.items ?? [],
+    [commentsQuery.data?.items]
+  );
   const meta = commentsQuery.data?.meta;
 
   const activeComment = useMemo(() => {
@@ -370,7 +373,11 @@ export const SupervisorCommentsPage: React.FC = () => {
 
   useEffect(() => {
     const visibleIds = new Set(tabItems.map((item) => item.id));
-    setCheckedIds((prev) => prev.filter((id) => visibleIds.has(id)));
+    setCheckedIds((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.filter((id) => visibleIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
   }, [tabItems]);
 
   const isAnyCommentMutationPending =
@@ -900,7 +907,10 @@ export const SupervisorCourseReviewPage: React.FC = () => {
   const [notesError, setNotesError] = useState<string>('');
 
   const reviewsQuery = useSupervisorCourseReviews({ status: 'all', page, limit: 12 });
-  const submissions = reviewsQuery.data?.items ?? [];
+  const submissions = useMemo(
+    () => reviewsQuery.data?.items ?? [],
+    [reviewsQuery.data?.items]
+  );
   const meta = reviewsQuery.data?.meta;
 
   const listedSub = useMemo(
@@ -1383,7 +1393,10 @@ export const SupervisorReportsPage: React.FC = () => {
   });
   const resolveMutation = useResolveModerationReportMutation();
 
-  const reports = reportsQuery.data?.items ?? [];
+  const reports = useMemo(
+    () => reportsQuery.data?.items ?? [],
+    [reportsQuery.data?.items]
+  );
   const meta = reportsQuery.data?.meta;
 
   const handleSelectFilter = (tab: SupervisorReportTab) => {
