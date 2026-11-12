@@ -245,12 +245,12 @@ export const InstructorQuestionBankPage: React.FC = () => {
   const multiCourseQuery = useMultiCourseQuestions(
     taughtCourseIds,
     filterParams,
-    selectedCourseId === 'all' && taughtCourseIds.length > 0
+    selectedCourseId === 'all' && taughtCourseIds.length > 0 && !coursesQuery.isError
   );
   const multiCourseAllQuery = useMultiCourseQuestions(
     taughtCourseIds,
     {},
-    selectedCourseId === 'all' && taughtCourseIds.length > 0
+    selectedCourseId === 'all' && taughtCourseIds.length > 0 && !coursesQuery.isError
   );
 
   const filterCourseDetailQuery = useInstructorCourseDetail(
@@ -810,8 +810,13 @@ export const InstructorQuestionBankPage: React.FC = () => {
           title="Could not load question bank"
           error={listError}
           onRetry={() => {
-            if (selectedCourseId === 'all') void multiCourseQuery.refetchAll();
-            else void singleCourseQuery.refetch();
+            void coursesQuery.refetch();
+            if (selectedCourseId === 'all') {
+              void multiCourseQuery.refetchAll();
+              void multiCourseAllQuery.refetchAll();
+            } else {
+              void singleCourseQuery.refetch();
+            }
           }}
         />
       ) : displayedQuestions.length === 0 ? (
