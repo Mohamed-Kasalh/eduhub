@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate, useBlocker } from 'react-router';
+import { useNavigate, useBlocker, useSearchParams } from 'react-router';
 import {
   Camera,
   CheckCircle2,
@@ -156,9 +156,17 @@ function buildApiFieldErrorResult(
   return { errors, fieldMap };
 }
 
+function normalizeProfileTab(tab: string | null, isInstructor: boolean): string {
+  if (tab === 'sessions' || tab === 'security') return 'security';
+  if (tab === 'notifications') return 'notifications';
+  if (tab === 'public-profile' && isInstructor) return 'public-profile';
+  return 'profile';
+}
+
 export const ProfilePage: React.FC = () => {
   const { role, user: authUser, rawUser, clearAuthSession } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const publicConfigQuery = usePublicConfig();
   const maxAvatarBytes = publicConfigQuery.data?.uploadLimits.avatarMaxBytes ?? MAX_AVATAR_BYTES;
   const maxAvatarMbLabel = `${Math.max(1, Math.round(maxAvatarBytes / (1024 * 1024)))} MB`;
@@ -176,8 +184,30 @@ export const ProfilePage: React.FC = () => {
     ...authUser,
   };
   const isInstructor = role === 'instructor';
+  const tabParam = searchParams.get('tab');
 
-  const [activeTab, setActiveTab] = useState<string>('profile');
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    normalizeProfileTab(tabParam, isInstructor)
+  );
+
+  useEffect(() => {
+    if (tabParam !== null) {
+      setActiveTab(normalizeProfileTab(tabParam, isInstructor));
+    }
+  }, [tabParam, isInstructor]);
+
+  const handleTabChange = (nextTab: string) => {
+    setActiveTab(nextTab);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (nextTab === 'profile') next.delete('tab');
+        else next.set('tab', nextTab);
+        return next;
+      },
+      { replace: true }
+    );
+  };
 
   const sessionsQuery = useMySessions(activeTab === 'security');
   const updateMeMutation = useUpdateMeMutation();
@@ -893,7 +923,7 @@ export const ProfilePage: React.FC = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      <Tabs tabs={tabs} activeTab={activeTab} onChange={handleTabChange} />
 
       {/* TAB 1: PROFILE */}
       {activeTab === 'profile' && (
