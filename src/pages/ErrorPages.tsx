@@ -5,29 +5,24 @@ import {
   ArrowLeft,
   Compass,
   LayoutDashboard,
-  UserCheck,
+  LogIn,
   ServerCrash,
   RefreshCw,
   Home,
 } from 'lucide-react';
 import { Button, StatusChip } from '../components/ui';
 import { CatMascot } from '../components/brand/BrandLogo';
-import { useApp } from '../context/AppContext';
-import { UserRole } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
+import type { UserRole } from '../data/mockData';
 import { usePageTitle } from '../hooks/usePageTitle';
 
 export const Forbidden403Page: React.FC<{
   requiredRoles?: UserRole[];
 }> = ({ requiredRoles }) => {
   usePageTitle('Access Denied (403)');
-  const { role, setRole, currentUser, getDashboardPath } = useApp();
+  const { role, user, getDashboardPath } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-
-  const suggestedRole =
-    requiredRoles && requiredRoles.length > 0 && requiredRoles[0] !== 'guest'
-      ? requiredRoles[0]
-      : undefined;
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center px-4 py-12">
@@ -45,7 +40,7 @@ export const Forbidden403Page: React.FC<{
         <p className="text-[16px] text-[#5F5B75] mb-6 leading-relaxed">
           You are currently signed in as{' '}
           <strong className="text-[#1E1B2E]">
-            {currentUser ? `${currentUser.name} (${role})` : 'Guest visitor'}
+            {user ? `${user.name} (${role})` : 'Guest visitor'}
           </strong>
           , which does not have permission to view{' '}
           <code className="px-2 py-0.5 rounded bg-[#F3EFFF] text-[#3F2A9E] text-[14px]">
@@ -74,16 +69,11 @@ export const Forbidden403Page: React.FC<{
             Go to my dashboard
           </Button>
 
-          {suggestedRole && (
-            <Button
-              variant="secondary"
-              size="md"
-              leftIcon={<UserCheck className="w-4 h-4" />}
-              onClick={() => setRole(suggestedRole)}
-            >
-              Switch to {suggestedRole} role
+          <Link to={`/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`}>
+            <Button variant="secondary" size="md" leftIcon={<LogIn className="w-4 h-4" />}>
+              Sign in with another account
             </Button>
-          )}
+          </Link>
         </div>
       </div>
     </div>
@@ -96,7 +86,7 @@ export const Forbidden403Page: React.FC<{
  */
 export const NotFound404Page: React.FC = () => {
   usePageTitle('Page Not Found (404)');
-  const { getDashboardPath } = useApp();
+  const { getDashboardPath } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 

@@ -347,10 +347,15 @@ async function executeRequest<TOutput>(
     timed.cleanup();
   }
 
-  if (res.status === 401 && !flags.retriedAuth && shouldAttemptRefresh(path, options.skipAuth)) {
-    const refreshed = await performSingleFlightRefresh();
-    if (refreshed) {
-      return executeRequest(path, options, { ...flags, retriedAuth: true });
+  if (res.status === 401 && shouldAttemptRefresh(path, options.skipAuth)) {
+    if (!flags.retriedAuth) {
+      const refreshed = await performSingleFlightRefresh();
+      if (refreshed) {
+        return executeRequest(path, options, { ...flags, retriedAuth: true });
+      }
+    } else {
+      tokenStore.clear();
+      dispatchSessionExpired();
     }
     throw await parseErrorFromResponse(res);
   }
@@ -641,10 +646,15 @@ export async function download(
     timed.cleanup();
   }
 
-  if (res.status === 401 && !retriedAuth && shouldAttemptRefresh(path, false)) {
-    const refreshed = await performSingleFlightRefresh();
-    if (refreshed) {
-      return download(path, options, true);
+  if (res.status === 401 && shouldAttemptRefresh(path, false)) {
+    if (!retriedAuth) {
+      const refreshed = await performSingleFlightRefresh();
+      if (refreshed) {
+        return download(path, options, true);
+      }
+    } else {
+      tokenStore.clear();
+      dispatchSessionExpired();
     }
     throw await parseErrorFromResponse(res);
   }

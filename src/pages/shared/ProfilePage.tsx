@@ -44,11 +44,12 @@ import {
   evaluatePassword,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   NotificationPreferenceKey,
   NotificationPreferenceMap,
-  ROLE_USERS,
+  UserProfile,
 } from '../../data/mockData';
 
 type AvatarUploadState = 'idle' | 'uploading' | 'success' | 'error';
@@ -141,10 +142,27 @@ function isValidOptionalUrl(raw: string): boolean {
 }
 
 export const ProfilePage: React.FC = () => {
-  const { role, setRole, currentUser, updateCurrentUser, courses, addToast } = useApp();
+  const { courses, addToast } = useApp();
+  const { role, user: authUser, clearAuthSession } = useAuth();
   const navigate = useNavigate();
+  const [profileOverride, setProfileOverride] = useState<Partial<UserProfile>>({});
 
-  const user = currentUser || ROLE_USERS.student;
+  const user: UserProfile = {
+    id: '',
+    name: 'EduHub User',
+    email: '',
+    role: role === 'guest' ? 'student' : role,
+    avatar: '',
+    title: '',
+    bio: '',
+    joinedAt: '',
+    status: 'Active',
+    ...authUser,
+    ...profileOverride,
+  };
+  const updateCurrentUser = (patch: Partial<UserProfile>) => {
+    setProfileOverride((prev) => ({ ...prev, ...patch }));
+  };
   const isInstructor = role === 'instructor';
 
   const [activeTab, setActiveTab] = useState<string>('profile');
@@ -653,7 +671,7 @@ export const ProfilePage: React.FC = () => {
       message: 'Your account has been removed from this session.',
       variant: 'danger',
     });
-    setRole('guest');
+    clearAuthSession();
     navigate('/');
   };
 

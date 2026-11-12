@@ -42,7 +42,8 @@ import {
 } from '../../components/ui';
 import { BrandLogo } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
-import { ROLE_USERS } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
+import { UserProfile } from '../../data/mockData';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -69,7 +70,6 @@ export const LessonPlayerPage: React.FC = () => {
   const navigate = useNavigate();
   const {
     courses,
-    currentUser,
     getLessonWatchPercent,
     updateLessonWatchPercent,
     toggleLessonCompleted,
@@ -79,8 +79,19 @@ export const LessonPlayerPage: React.FC = () => {
     setReports,
     addToast,
   } = useApp();
+  const { user } = useAuth();
 
-  const student = currentUser || ROLE_USERS.student;
+  const student: UserProfile = user ?? {
+    id: '',
+    name: 'Student',
+    email: '',
+    role: 'student',
+    avatar: '',
+    title: 'Learner',
+    bio: '',
+    joinedAt: '',
+    status: 'Active',
+  };
   const course = useMemo(
     () => courses.find((c) => c.id === courseId) || courses[0],
     [courses, courseId]

@@ -1,43 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import { WifiOff, RefreshCw } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { onNetworkIssue } from '../../api/errors';
 import { useApp } from '../../context/AppContext';
 
 export const OfflineBanner: React.FC = () => {
   const { addToast } = useApp();
-  const [isOnline, setIsOnline] = useState<boolean>(() =>
-    typeof navigator !== 'undefined' ? navigator.onLine : true
+  const queryClient = useQueryClient();
+  const [browserOffline, setBrowserOffline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
+  const [apiNetworkError, setApiNetworkError] = useState<boolean>(false);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setBrowserOffline(false);
+      setApiNetworkError(false);
+      void queryClient.refetchQueries({ type: 'active' });
+    };
+    const handleOffline = () => setBrowserOffline(true);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    const unsubscribeNetwork = onNetworkIssue((offline) => {
+      setApiNetworkError(offline);
+    });
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      unsubscribeNetwork();
     };
-  }, []);
+  }, [queryClient]);
 
-  if (isOnline) return null;
+  if (!browserOffline && !apiNetworkError) return null;
 
-  const handleRetry = () => {
+  const handleRetry = async () => {
     const nowOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-    setIsOnline(nowOnline);
-    if (nowOnline) {
-      addToast({
-        title: 'Connection restored',
-        message: 'You are back online.',
-        variant: 'success',
-      });
-    } else {
+    setBrowserOffline(!nowOnline);
+    if (!nowOnline) {
       addToast({
         title: 'Still offline',
         message: 'Check your internet connection and try again.',
         variant: 'warning',
       });
+      return;
     }
+
+    setApiNetworkError(false);
+    await queryClient.refetchQueries({ type: 'active' });
+    addToast({
+      title: 'Retrying connection',
+      message: 'Refreshing active workspace data.',
+      variant: 'info',
+    });
   };
 
   return (
@@ -50,12 +65,14 @@ export const OfflineBanner: React.FC = () => {
         <div className="flex items-center gap-2.5">
           <WifiOff className="w-4 h-4 text-[#F5B82E] shrink-0" />
           <span className="font-semibold">
-            You&apos;re offline. Some features may not work.
+            {browserOffline
+              ? "You're offline. Some features may not work."
+              : 'Network connection interrupted while reaching EduHub servers.'}
           </span>
         </div>
         <button
           type="button"
-          onClick={handleRetry}
+          onClick={() => void handleRetry()}
           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-[8px] bg-white/10 hover:bg-white/20 text-white font-bold text-[12px] transition-colors cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />

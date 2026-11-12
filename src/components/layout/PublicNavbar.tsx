@@ -4,9 +4,11 @@ import { Menu, X, Compass, Sparkles, LayoutDashboard } from 'lucide-react';
 import { BrandLogo } from '../brand/BrandLogo';
 import { Button, SearchInput, Avatar } from '../ui';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
 export const PublicNavbar: React.FC = () => {
-  const { role, currentUser, searchQuery, setSearchQuery, getDashboardPath } = useApp();
+  const { searchQuery, setSearchQuery } = useApp();
+  const { role, user, getDashboardPath } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -77,16 +79,16 @@ export const PublicNavbar: React.FC = () => {
 
         {/* Right: Log in (ghost) + Sign up (primary) + current role dashboard & profile shortcut */}
         <div className="hidden lg:flex items-center gap-1.5 xl:gap-2 shrink-0">
-          {role !== 'guest' && currentUser && (
+          {role !== 'guest' && user && (
             <>
               <Link
                 to="/profile"
                 className="inline-flex items-center gap-2 px-1.5 xl:px-2.5 py-1 rounded-[10px] border border-[#E6E1F5] bg-[#FAF8FF] hover:border-[#A78BFA] transition-colors shrink-0"
-                title={`Signed in as ${currentUser.name}`}
+                title={`Signed in as ${user.name}`}
               >
-                <Avatar src={currentUser.avatar} name={currentUser.name} size="sm" />
+                <Avatar src={user.avatar} name={user.name} size="sm" />
                 <span className="hidden xl:inline text-[13px] font-bold text-[#1E1B2E] max-w-[110px] truncate">
-                  {currentUser.name}
+                  {user.name}
                 </span>
               </Link>
               <Link to={getDashboardPath()} className="shrink-0">
@@ -149,7 +151,7 @@ export const PublicNavbar: React.FC = () => {
               <Sparkles className="w-4 h-4 text-[#F59E3B]" />
               <span>Design system</span>
             </Link>
-            {role !== 'guest' && currentUser && (
+            {role !== 'guest' && user && (
               <Link
                 to={getDashboardPath()}
                 className="px-3.5 py-2.5 rounded-[10px] text-[16px] font-semibold text-[#6D4AE0] bg-[#F3EFFF] flex items-center justify-between"
@@ -158,7 +160,7 @@ export const PublicNavbar: React.FC = () => {
                   <LayoutDashboard className="w-4 h-4" />
                   <span>Go to {role} dashboard</span>
                 </span>
-                <Avatar src={currentUser.avatar} name={currentUser.name} size="sm" />
+                <Avatar src={user.avatar} name={user.name} size="sm" />
               </Link>
             )}
           </div>

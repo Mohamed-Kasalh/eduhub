@@ -1,9 +1,14 @@
 import React, { Suspense, lazy } from 'react';
-import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
+import {
+  createBrowserRouter,
+  Outlet,
+  ScrollRestoration,
+  type RouteObject,
+} from 'react-router';
 import { useApp } from './context/AppContext';
+import { useAuth } from './context/AuthContext';
 import { PublicShell, RoleGuard } from './components/layout/RoleGuard';
 import { DashboardShell } from './components/layout/DashboardShell';
-import { PreviewSwitcher } from './components/layout/PreviewSwitcher';
 import { OfflineBanner } from './components/layout/OfflineBanner';
 import { Skeleton, ToastViewport } from './components/ui';
 import { usePageTitle } from './hooks/usePageTitle';
@@ -182,6 +187,15 @@ const TitledRoute: React.FC<{ title: string; children: React.ReactNode }> = ({
   return <Suspense fallback={<PageRouteSkeleton />}>{children}</Suspense>;
 };
 
+const DevPreviewSwitcher =
+  import.meta.env.DEV && import.meta.env.VITE_ENABLE_ROLE_SWITCHER === 'true'
+    ? lazy(() =>
+        import('./components/layout/PreviewSwitcher').then((m) => ({
+          default: m.PreviewSwitcher,
+        }))
+      )
+    : null;
+
 const RootLayout: React.FC = () => {
   const { toasts, removeToast } = useApp();
   return (
@@ -196,7 +210,11 @@ const RootLayout: React.FC = () => {
       <ScrollRestoration />
       <Outlet />
       <ToastViewport toasts={toasts} onDismiss={removeToast} />
-      <PreviewSwitcher />
+      {DevPreviewSwitcher ? (
+        <Suspense fallback={null}>
+          <DevPreviewSwitcher />
+        </Suspense>
+      ) : null}
     </>
   );
 };
@@ -206,14 +224,14 @@ const RootLayout: React.FC = () => {
  * or inside the logged-in DashboardShell (when Student/Instructor/Admin/Supervisor).
  */
 const AdaptiveShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { role } = useApp();
+  const { role } = useAuth();
   if (role === 'guest') {
     return <PublicShell>{children}</PublicShell>;
   }
   return <DashboardShell>{children}</DashboardShell>;
 };
 
-export const router = createBrowserRouter([
+export const appRoutes: RouteObject[] = [
   {
     path: '/',
     Component: RootLayout,
@@ -643,4 +661,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(appRoutes);

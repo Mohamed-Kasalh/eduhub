@@ -32,6 +32,7 @@ import {
 } from '../../components/ui';
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   COURSE_QUESTION_BANK,
   DEFAULT_DEMO_ANSWERS,
@@ -1094,10 +1095,9 @@ export const ExamResultPage: React.FC = () => {
     lastSubmittedAnswers,
     completeAllCourseLessons,
     setCourseExamScore,
-    currentUser,
-    profiles,
   } = useApp();
-  const studentFirstName = (currentUser?.name || profiles.student.name).split(' ')[0];
+  const { user } = useAuth();
+  const studentFirstName = (user?.name || 'Student').split(' ')[0];
 
   const course = useMemo(
     () => courses.find((c) => c.id === courseId) || courses[0],

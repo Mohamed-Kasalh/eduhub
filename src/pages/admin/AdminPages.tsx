@@ -41,7 +41,8 @@ import {
   ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
-import { ROLE_USERS, Course, Category } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
+import { Course, Category } from '../../data/mockData';
 import { handleImageError } from '../../utils/imageFallback';
 import {
   USER_GROWTH_6_MONTHS,
@@ -104,8 +105,11 @@ export const CourseWorkflowBanner: React.FC<{ roleMode: 'admin' | 'supervisor' }
 // pending approvals widget (courses, instructors), recent activity feed.
 // ============================================================================
 export const AdminDashboardPage: React.FC = () => {
-  const { courses, setCourses, currentUser, addToast } = useApp();
-  const admin = currentUser || ROLE_USERS.admin;
+  const { courses, setCourses, addToast } = useApp();
+  const { user } = useAuth();
+  const admin = {
+    name: user?.name || 'Admin',
+  };
 
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(
     USER_GROWTH_6_MONTHS.length - 1

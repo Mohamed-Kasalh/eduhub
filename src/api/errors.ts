@@ -39,6 +39,7 @@ export function isApiError(error: unknown): error is ApiError {
 }
 
 export const SESSION_EXPIRED_EVENT = 'eduhub:session-expired';
+export const NETWORK_ISSUE_EVENT = 'eduhub:network-issue';
 
 export function dispatchSessionExpired(): void {
   if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') {
@@ -55,6 +56,49 @@ export function onSessionExpired(handler: () => void): () => void {
   return () => {
     window.removeEventListener(SESSION_EXPIRED_EVENT, handler);
   };
+}
+
+export function dispatchNetworkIssue(offline: boolean): void {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent<boolean>(NETWORK_ISSUE_EVENT, { detail: offline }));
+}
+
+export function onNetworkIssue(handler: (offline: boolean) => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  const listener = (event: Event) => {
+    const customEvent = event as CustomEvent<boolean>;
+    handler(Boolean(customEvent.detail));
+  };
+  window.addEventListener(NETWORK_ISSUE_EVENT, listener);
+  return () => {
+    window.removeEventListener(NETWORK_ISSUE_EVENT, listener);
+  };
+}
+
+export function isNotFoundError(error: unknown): boolean {
+  return isApiError(error) && error.status === 404;
+}
+
+export function isForbiddenError(error: unknown): boolean {
+  return isApiError(error) && error.status === 403;
+}
+
+export function isNetworkError(error: unknown): boolean {
+  return isApiError(error) && (error.isNetwork || error.isTimeout);
+}
+
+export function getErrorMessage(error: unknown, fallback = 'Something went wrong.'): string {
+  if (isApiError(error)) {
+    return error.message || fallback;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
 }
 
 export interface SchemaValidationReport {

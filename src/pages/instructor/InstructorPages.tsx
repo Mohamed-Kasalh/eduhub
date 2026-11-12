@@ -34,7 +34,7 @@ import {
   ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
-import { ROLE_USERS } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { handleImageError } from '../../utils/imageFallback';
 import {
   ENROLLMENTS_30_DAYS,
@@ -59,9 +59,13 @@ export {
 // notices for courses pending review or rejected.
 // ============================================================================
 export const InstructorDashboardPage: React.FC = () => {
-  const { currentUser, addToast } = useApp();
+  const { addToast } = useApp();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const instructor = currentUser || ROLE_USERS.instructor;
+  const instructor = {
+    name: user?.name || 'Instructor',
+    avatar: user?.avatar || '',
+  };
 
   const [selectedPointIdx, setSelectedPointIdx] = useState<number>(
     ENROLLMENTS_30_DAYS.length - 1
@@ -1174,8 +1178,12 @@ export const InstructorStudentsPage: React.FC = () => {
 // "Mark as resolved", empty state.
 // ============================================================================
 export const InstructorCommentsPage: React.FC = () => {
-  const { currentUser, addToast } = useApp();
-  const instructor = currentUser || ROLE_USERS.instructor;
+  const { addToast } = useApp();
+  const { user } = useAuth();
+  const instructor = {
+    name: user?.name || 'Instructor',
+    avatar: user?.avatar || '',
+  };
 
   const [threads, setThreads] = useState<InstructorCommentThread[]>(
     INITIAL_INSTRUCTOR_COMMENTS

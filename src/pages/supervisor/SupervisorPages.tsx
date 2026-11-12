@@ -29,7 +29,7 @@ import {
   ConfirmDialog,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
-import { ROLE_USERS } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
 import { handleImageError } from '../../utils/imageFallback';
 import { CourseWorkflowBanner } from '../admin/AdminPages';
 import {
@@ -55,9 +55,11 @@ const QUEUE_WEEK_DATA = [
 // queue chart, recent moderation actions.
 // ============================================================================
 export const SupervisorDashboardPage: React.FC = () => {
-  const { currentUser } = useApp();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const supervisor = currentUser || ROLE_USERS.supervisor;
+  const supervisor = {
+    name: user?.name || 'Supervisor',
+  };
 
   return (
     <div className="space-y-8 pb-12">

@@ -29,6 +29,7 @@ import {
 } from '../../components/ui';
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { CertificateRecord } from '../../data/mockData';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
@@ -108,13 +109,13 @@ export const CertificateDetailPage: React.FC = () => {
   const {
     certificates,
     courses,
-    profiles,
     getCourseProgressStats,
     examBestScores,
     completeAllCourseLessons,
     setCourseExamScore,
     addToast,
   } = useApp();
+  const { user } = useAuth();
 
   const certRef = useRef<HTMLDivElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
@@ -132,7 +133,7 @@ export const CertificateDetailPage: React.FC = () => {
   }, [certificates, id]);
 
   const studentDisplayName =
-    cert.studentId === profiles.student.id ? profiles.student.name : cert.studentName;
+    user && cert.studentId === user.id ? user.name : cert.studentName;
 
   const course = useMemo(
     () => courses.find((c) => c.id === cert.courseId) || courses[0],
@@ -753,7 +754,8 @@ export const CertificateDetailPage: React.FC = () => {
 // empty state with the cat mascot + locked course card explaining what is missing.
 // ============================================================================
 export const CertificatesListPage: React.FC = () => {
-  const { certificates, courses, profiles } = useApp();
+  const { certificates, courses } = useApp();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [previewEmpty, setPreviewEmpty] = useState(false);
 
@@ -828,8 +830,8 @@ export const CertificatesListPage: React.FC = () => {
                       Certificate of Completion
                     </p>
                     <p className="font-script text-[24px] text-[#3F2A9E] leading-none">
-                      {cert.studentId === profiles.student.id
-                        ? profiles.student.name
+                      {user && cert.studentId === user.id
+                        ? user.name
                         : cert.studentName}
                     </p>
                     <p className="font-display font-bold text-[12px] text-[#6D4AE0] truncate">
@@ -944,7 +946,8 @@ export const CertificatesListPage: React.FC = () => {
 // ============================================================================
 export const VerifyCertificatePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { certificates, profiles } = useApp();
+  const { certificates } = useApp();
+  const { user } = useAuth();
 
   const [inputCode, setInputCode] = useState<string>(() =>
     id && id !== ':id' ? id : 'EDU-2026-000123'
@@ -1109,8 +1112,8 @@ export const VerifyCertificatePage: React.FC = () => {
               <div className="p-3.5 rounded-[10px] bg-white border border-[#E6E1F5]">
                 <p className="text-[12px] text-[#5F5B75]">Certificate holder</p>
                 <p className="font-display font-bold text-[20px] text-[#1E1B2E]">
-                  {matchedCert.studentId === profiles.student.id
-                    ? profiles.student.name
+                  {user && matchedCert.studentId === user.id
+                    ? user.name
                     : matchedCert.studentName}
                 </p>
               </div>

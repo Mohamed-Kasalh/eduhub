@@ -36,7 +36,8 @@ import {
   FormErrorItem,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
-import { ROLE_USERS, Course } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
+import { Course } from '../../data/mockData';
 import { handleImageError } from '../../utils/imageFallback';
 
 type UploadVisualState = 'idle' | 'uploading' | 'success' | 'error';
@@ -73,7 +74,8 @@ function formatTotalMinutes(mins: number): string {
 }
 
 export const InstructorCreateCoursePage: React.FC = () => {
-  const { categories, setCourses, currentUser, addToast } = useApp();
+  const { categories, setCourses, addToast } = useApp();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -485,7 +487,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
     }
 
     setWizardErrors([]);
-    const instructor = currentUser || ROLE_USERS.instructor;
+    const instructor = {
+      id: user?.id || '',
+      name: user?.name || 'Instructor',
+      avatar: user?.avatar || '',
+    };
     const cat = categories.find((c) => c.id === categoryId) || categories[0];
     const created: Course = {
       id: `course-${Date.now()}`,

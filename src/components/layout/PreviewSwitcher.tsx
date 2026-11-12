@@ -8,20 +8,52 @@ import {
   ShieldAlert,
   Sparkles,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
-import { useApp, getRoleDashboardPath } from '../../context/AppContext';
-import { UserRole } from '../../data/mockData';
+import { useAuth, getRoleDashboardPath, useLoginMutation, useLogoutMutation } from '../../api/hooks/useAuth';
+import type { UserRole } from '../../data/mockData';
 
-const ROLE_BADGES: Array<{
+const DEMO_ACCOUNTS: Array<{
   role: UserRole;
   label: string;
   badgeColor: string;
+  person: string;
+  email?: string;
+  password?: string;
 }> = [
-  { role: 'guest', label: 'Guest', badgeColor: 'bg-[#5F5B75] text-white' },
-  { role: 'student', label: 'Student', badgeColor: 'bg-[#6D4AE0] text-white' },
-  { role: 'instructor', label: 'Instructor', badgeColor: 'bg-[#F59E3B] text-white' },
-  { role: 'admin', label: 'Admin', badgeColor: 'bg-[#2563EB] text-white' },
-  { role: 'supervisor', label: 'Supervisor', badgeColor: 'bg-[#16A34A] text-white' },
+  { role: 'guest', label: 'Guest', badgeColor: 'bg-[#5F5B75] text-white', person: 'Public visitor' },
+  {
+    role: 'student',
+    label: 'Student',
+    badgeColor: 'bg-[#6D4AE0] text-white',
+    person: 'Sara Ali',
+    email: 'sara.ali@eduhub.com',
+    password: 'EduHub#2025',
+  },
+  {
+    role: 'instructor',
+    label: 'Instructor',
+    badgeColor: 'bg-[#F59E3B] text-white',
+    person: 'Ahmed Hassan',
+    email: 'ahmed.hassan@eduhub.com',
+    password: 'EduHub#2025',
+  },
+  {
+    role: 'admin',
+    label: 'Admin',
+    badgeColor: 'bg-[#2563EB] text-white',
+    person: 'Nour Khaled',
+    email: 'nour.khaled@eduhub.com',
+    password: 'EduHub#2025',
+  },
+  {
+    role: 'supervisor',
+    label: 'Supervisor',
+    badgeColor: 'bg-[#16A34A] text-white',
+    person: 'Hana Mostafa',
+    email: 'hana.mostafa@eduhub.com',
+    password: 'EduHub#2025',
+  },
 ];
 
 const QUICK_ROUTES: Array<{ group: string; items: Array<{ label: string; path: string }> }> = [
@@ -98,24 +130,50 @@ const QUICK_ROUTES: Array<{ group: string; items: Array<{ label: string; path: s
 ];
 
 export const PreviewSwitcher: React.FC = () => {
-  const { role, setRole, profiles } = useApp();
+  if (!import.meta.env.DEV || import.meta.env.VITE_ENABLE_ROLE_SWITCHER !== 'true') {
+    return null;
+  }
+
+  const { role, isAuthenticated } = useAuth();
+  const loginMutation = useLoginMutation();
+  const logoutMutation = useLogoutMutation();
   const [expanded, setExpanded] = useState(false);
   const [showRoutes, setShowRoutes] = useState(false);
   const [autoNavigate, setAutoNavigate] = useState(true);
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
-  const ROLE_OPTIONS = ROLE_BADGES.map((item) => ({
-    ...item,
-    person: item.role === 'guest' ? 'Public visitor' : profiles[item.role].name,
-  }));
+  const activeMeta = DEMO_ACCOUNTS.find((r) => r.role === role) || DEMO_ACCOUNTS[0];
+  const isBusy = loginMutation.isPending || logoutMutation.isPending;
 
-  const activeMeta = ROLE_OPTIONS.find((r) => r.role === role) || ROLE_OPTIONS[1];
-
-  const handleSelectRole = (nextRole: UserRole) => {
-    setRole(nextRole);
-    if (autoNavigate) {
-      navigate(getRoleDashboardPath(nextRole));
+  const handleSelectRole = async (item: (typeof DEMO_ACCOUNTS)[number]) => {
+    if (isBusy) return;
+    setPendingRole(item.role);
+    try {
+      if (item.role === 'guest') {
+        if (isAuthenticated) {
+          await logoutMutation.mutateAsync();
+        }
+        if (autoNavigate) {
+          navigate('/');
+        }
+        return;
+      }
+      if (item.email && item.password) {
+        const session = await loginMutation.mutateAsync({
+          email: item.email,
+          password: item.password,
+          rememberMe: true,
+        });
+        if (autoNavigate) {
+          navigate(getRoleDashboardPath(session.user.role));
+        }
+      }
+    } catch {
+      // Danger toast handled in auth mutation hooks.
+    } finally {
+      setPendingRole(null);
     }
   };
 
@@ -123,7 +181,6 @@ export const PreviewSwitcher: React.FC = () => {
     <div className="fixed bottom-4 left-4 z-50 max-w-[calc(100vw-2rem)]">
       {expanded ? (
         <div className="w-80 sm:w-88 rounded-[12px] bg-white border-2 border-[#6D4AE0] shadow-purple-lg overflow-hidden">
-          {/* Header */}
           <div className="px-4 py-3 bg-[#1E1B2E] text-white flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-[#A78BFA]" />
@@ -139,17 +196,18 @@ export const PreviewSwitcher: React.FC = () => {
             </button>
           </div>
 
-          {/* Role buttons */}
           <div className="p-3 space-y-2 bg-white">
             <div className="grid grid-cols-1 gap-1.5">
-              {ROLE_OPTIONS.map((item) => {
+              {DEMO_ACCOUNTS.map((item) => {
                 const isCurrent = item.role === role;
+                const isSwitchingThis = pendingRole === item.role;
                 return (
                   <button
                     key={item.role}
                     type="button"
-                    onClick={() => handleSelectRole(item.role)}
-                    className={`w-full px-3 py-2 rounded-[10px] text-left flex items-center justify-between transition-all cursor-pointer border ${
+                    disabled={isBusy}
+                    onClick={() => void handleSelectRole(item)}
+                    className={`w-full px-3 py-2 rounded-[10px] text-left flex items-center justify-between transition-all cursor-pointer border disabled:opacity-60 ${
                       isCurrent
                         ? 'bg-[#F3EFFF] border-[#6D4AE0] text-[#1E1B2E] shadow-purple-sm'
                         : 'bg-white border-[#E6E1F5] text-[#1E1B2E] hover:bg-[#FAF8FF] hover:border-[#A78BFA]'
@@ -166,17 +224,18 @@ export const PreviewSwitcher: React.FC = () => {
                         <p className="text-[12px] text-[#5F5B75]">{item.person}</p>
                       </div>
                     </div>
-                    {isCurrent && (
+                    {isSwitchingThis ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-[#6D4AE0]" />
+                    ) : isCurrent ? (
                       <span className="px-2 py-0.5 rounded-full bg-[#6D4AE0] text-white text-[11px] font-semibold">
                         Active
                       </span>
-                    )}
+                    ) : null}
                   </button>
                 );
               })}
             </div>
 
-            {/* Toggle whether switching role jumps to dashboard or stays on current URL to test 403 */}
             <label className="flex items-center justify-between gap-2 pt-2 px-1 text-[12px] text-[#5F5B75] cursor-pointer select-none border-t border-[#E6E1F5]">
               <span>Jump to role dashboard on switch</span>
               <input
@@ -187,7 +246,6 @@ export const PreviewSwitcher: React.FC = () => {
               />
             </label>
 
-            {/* Quick test buttons: 403 test & All 38 routes */}
             <div className="pt-2 border-t border-[#E6E1F5] flex items-center gap-2">
               <button
                 type="button"
@@ -200,9 +258,12 @@ export const PreviewSwitcher: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  // Navigate to a route owned by a different role to demonstrate 403 guard
                   const forbiddenTarget =
-                    role === 'admin' ? '/student/dashboard' : '/admin/users';
+                    role === 'guest'
+                      ? '/403'
+                      : role === 'admin'
+                      ? '/student/dashboard'
+                      : '/admin/users';
                   navigate(forbiddenTarget);
                 }}
                 className="h-9 px-2.5 rounded-[10px] bg-[#FEF2F2] text-[#DC2626] border border-[#DC2626]/25 text-[12px] font-bold inline-flex items-center gap-1 hover:bg-[#FEE2E2] cursor-pointer"

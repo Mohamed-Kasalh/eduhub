@@ -33,7 +33,8 @@ import {
 } from '../../components/ui';
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
-import { ACHIEVEMENT_BADGES, ROLE_USERS, Course } from '../../data/mockData';
+import { useAuth } from '../../context/AuthContext';
+import { ACHIEVEMENT_BADGES, Course, UserProfile } from '../../data/mockData';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import {
@@ -50,7 +51,6 @@ export { CertificatesListPage, CertificateDetailPage } from './CertificatePages'
 
 export const StudentDashboardPage: React.FC = () => {
   const {
-    currentUser,
     courses,
     exams,
     certificates,
@@ -58,8 +58,21 @@ export const StudentDashboardPage: React.FC = () => {
     getCourseProgressStats,
     examBestScores,
   } = useApp();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const student = currentUser || ROLE_USERS.student;
+  const student: UserProfile = user ?? {
+    id: '',
+    name: 'Student',
+    email: '',
+    role: 'student',
+    avatar: '',
+    title: 'Learner',
+    bio: '',
+    joinedAt: '',
+    status: 'Active',
+    streakDays: 0,
+    points: 0,
+  };
 
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(5);
 

@@ -28,7 +28,8 @@ import {
 import { BrandLogo } from '../brand/BrandLogo';
 import { Avatar, SearchInput, StatusChip } from '../ui';
 import { useApp } from '../../context/AppContext';
-import { NotificationItem, UserRole } from '../../data/mockData';
+import { useAuth, useLogoutMutation } from '../../api/hooks/useAuth';
+import type { NotificationItem, UserRole } from '../../data/mockData';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 function getNotificationIcon(type: NotificationItem['type']) {
@@ -146,17 +147,16 @@ const ROLE_MENUS: Record<Exclude<UserRole, 'guest'>, NavItem[]> = {
 
 export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
-    role,
-    setRole,
-    profiles,
-    currentUser,
+    sidebarCollapsed: collapsed,
+    setSidebarCollapsed: setCollapsed,
     notifications,
     markNotificationRead,
     markAllNotificationsRead,
     searchQuery,
     setSearchQuery,
   } = useApp();
-  const [collapsed, setCollapsed] = useState(false);
+  const { role, user } = useAuth();
+  const logoutMutation = useLogoutMutation();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const mobileDrawerRef = useDialogA11y(mobileDrawerOpen, () => setMobileDrawerOpen(false));
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
@@ -169,7 +169,11 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   const notifMenuRef = useRef<HTMLDivElement | null>(null);
 
   const activeRole: Exclude<UserRole, 'guest'> = role === 'guest' ? 'student' : role;
-  const activeUser = currentUser || profiles[activeRole];
+  const activeUser = user ?? {
+    name: 'EduHub User',
+    email: '',
+    avatar: '',
+  };
   const menuItems = ROLE_MENUS[activeRole];
   const unreadCount = notifications.filter((n) => !n.read).length;
   const popoverNotifications =
@@ -202,10 +206,15 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
     return false;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setAvatarMenuOpen(false);
-    setRole('guest');
-    navigate('/login');
+    try {
+      await logoutMutation.mutateAsync();
+    } catch {
+      // Handled inside useLogoutMutation (local session always cleared).
+    } finally {
+      navigate('/login');
+    }
   };
 
   const renderSidebarLinks = (isCollapsedMode: boolean) => (

@@ -13,6 +13,7 @@
     "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.107.1",
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.71.0",
     "react": "^19.0.0",

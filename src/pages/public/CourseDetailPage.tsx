@@ -39,6 +39,7 @@ import {
 } from '../../components/ui';
 import { CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
 import {
@@ -79,10 +80,9 @@ export const CourseDetailPage: React.FC = () => {
     toggleWishlist,
     reviews,
     addCourseReview,
-    currentUser,
-    profiles,
     addToast,
   } = useApp();
+  const { user } = useAuth();
 
   const course = useMemo(
     () => courses.find((c) => c.id === id) || courses[0],
@@ -157,9 +157,8 @@ export const CourseDetailPage: React.FC = () => {
       (inst) => inst.id === course.instructorId || inst.name === course.instructorName
     );
     const liveInstructor =
-      course.instructorId === profiles.instructor.id ||
-      found?.id === profiles.instructor.id
-        ? profiles.instructor
+      user && (course.instructorId === user.id || found?.id === user.id)
+        ? user
         : null;
     if (found) {
       return liveInstructor
@@ -184,7 +183,7 @@ export const CourseDetailPage: React.FC = () => {
         liveInstructor?.bio ||
         'Senior practitioner and educator with over 10 years of industry experience designing, building, and scaling real-world systems.',
     };
-  }, [course, profiles.instructor]);
+  }, [course, user]);
 
   // Related courses (4 cards)
   const relatedCourses = useMemo(() => {
@@ -258,9 +257,9 @@ export const CourseDetailPage: React.FC = () => {
     }
     addCourseReview({
       courseId: course.id,
-      authorName: currentUser?.name || profiles.student.name,
-      authorAvatar: currentUser?.avatar || profiles.student.avatar,
-      authorRole: currentUser?.title || 'Enrolled Student',
+      authorName: user?.name || 'EduHub Learner',
+      authorAvatar: user?.avatar || '',
+      authorRole: user?.title || 'Enrolled Student',
       rating: reviewRating,
       comment: reviewComment.trim(),
     });
