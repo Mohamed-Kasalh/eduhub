@@ -37,6 +37,7 @@ import {
   Modal,
   Drawer,
   ToastCard,
+  QueryErrorState,
 } from '../components/ui';
 import { handleImageError } from '../utils/imageFallback';
 import { BrandLogo, CatMascot } from '../components/brand/BrandLogo';
@@ -608,7 +609,15 @@ export const DesignSystemPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {sampleCourses.length >= 3 ? (
+          {coursesQuery.isError ? (
+            <div className="col-span-full">
+              <QueryErrorState
+                title="Could not load sample courses"
+                error={coursesQuery.error}
+                onRetry={() => void coursesQuery.refetch()}
+              />
+            </div>
+          ) : sampleCourses.length >= 3 ? (
             <>
               <CourseCard
                 course={sampleCourses[0]}
