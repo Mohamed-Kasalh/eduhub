@@ -38,6 +38,7 @@ import {
   Drawer,
   ToastCard,
 } from '../components/ui';
+import { handleImageError } from '../utils/imageFallback';
 import { BrandLogo, CatMascot } from '../components/brand/BrandLogo';
 import { useApp } from '../context/AppContext';
 import { ACHIEVEMENT_BADGES } from '../data/mockData';
@@ -851,6 +852,7 @@ export const DesignSystemPage: React.FC = () => {
                   <img
                     src={row.thumbnail}
                     alt={row.title}
+                    onError={handleImageError}
                     className="w-12 h-9 rounded-[8px] object-cover border border-[#E6E1F5]"
                   />
                   <div>

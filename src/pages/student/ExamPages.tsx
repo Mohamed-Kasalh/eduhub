@@ -37,6 +37,8 @@ import {
   DEFAULT_DEMO_ANSWERS,
   BankExamQuestion,
 } from '../../data/examAndCertData';
+import { handleImageError } from '../../utils/imageFallback';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 function formatTimer(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds));
@@ -70,6 +72,7 @@ export const ExamPage: React.FC = () => {
     () => courses.find((c) => c.id === courseId) || courses[0],
     [courses, courseId]
   );
+  usePageTitle(`${course.title} Final Exam`);
 
   const courseStats = getCourseProgressStats(course.id);
   const courseAttempts = useMemo(
@@ -788,6 +791,7 @@ export const ExamPage: React.FC = () => {
                 <img
                   src={activeQuestion.imageUrl}
                   alt={activeQuestion.imageCaption || 'Question reference diagram'}
+                  onError={handleImageError}
                   className="w-full h-48 sm:h-56 object-cover"
                 />
                 {activeQuestion.imageCaption && (
@@ -1090,12 +1094,16 @@ export const ExamResultPage: React.FC = () => {
     lastSubmittedAnswers,
     completeAllCourseLessons,
     setCourseExamScore,
+    currentUser,
+    profiles,
   } = useApp();
+  const studentFirstName = (currentUser?.name || profiles.student.name).split(' ')[0];
 
   const course = useMemo(
     () => courses.find((c) => c.id === courseId) || courses[0],
     [courses, courseId]
   );
+  usePageTitle(`${course.title} Exam Results`);
 
   // Toggleable Passed (86%) vs Failed (45%) state for reviewing both result banners
   const [resultModeOverride, setResultModeOverride] = useState<'passed' | 'failed'>('passed');
@@ -1276,8 +1284,8 @@ export const ExamResultPage: React.FC = () => {
 
             <h1 className="text-[32px] sm:text-[38px] font-display font-bold text-[#1E1B2E] leading-tight">
               {isPassed
-                ? 'Congratulations, Sara! You passed the exam.'
-                : 'Keep going, Sara — review and retake when ready.'}
+                ? `Congratulations, ${studentFirstName}! You passed the exam.`
+                : `Keep going, ${studentFirstName} — review and retake when ready.`}
             </h1>
 
             <p className="text-[15px] text-[#5F5B75] max-w-xl leading-relaxed">

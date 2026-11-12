@@ -42,6 +42,7 @@ import {
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS, Course, Category } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
 import {
   USER_GROWTH_6_MONTHS,
   CATEGORY_ENROLLMENT_DONUT,
@@ -722,14 +723,15 @@ export const AdminUsersPage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search name or email..."
-              className="w-full h-10 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
+              aria-label="Search users by name or email"
+              className="w-full h-11 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
             />
           </div>
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
             aria-label="Filter by role"
-            className="h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
+            className="h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
           >
             <option value="all">All roles</option>
             <option value="student">Student</option>
@@ -741,7 +743,7 @@ export const AdminUsersPage: React.FC = () => {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             aria-label="Filter by status"
-            className="h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
+            className="h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
           >
             <option value="all">All statuses</option>
             <option value="Active">Active</option>
@@ -791,6 +793,7 @@ export const AdminUsersPage: React.FC = () => {
                 <th className="py-3.5 px-4 w-10">
                   <input
                     type="checkbox"
+                    aria-label="Select all visible users"
                     checked={
                       filteredUsers.length > 0 &&
                       filteredUsers.every((u) => selectedUserIds.includes(u.id))
@@ -817,6 +820,7 @@ export const AdminUsersPage: React.FC = () => {
                   <td className="py-3.5 px-4">
                     <input
                       type="checkbox"
+                      aria-label={`Select user ${u.name}`}
                       checked={selectedUserIds.includes(u.id)}
                       onChange={() =>
                         setSelectedUserIds((prev) =>
@@ -943,34 +947,37 @@ export const AdminUsersPage: React.FC = () => {
       >
         <form onSubmit={handleCreateUser} className="space-y-4 text-[14px]">
           <div className="space-y-1">
-            <label className="block font-bold text-[#1E1B2E]">Full name *</label>
+            <label htmlFor="admin-create-name" className="block font-bold text-[#1E1B2E]">Full name *</label>
             <input
+              id="admin-create-name"
               type="text"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="e.g. Hassan Mahmoud"
               required
-              className="w-full h-10 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
+              className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
             />
           </div>
           <div className="space-y-1">
-            <label className="block font-bold text-[#1E1B2E]">Email address *</label>
+            <label htmlFor="admin-create-email" className="block font-bold text-[#1E1B2E]">Email address *</label>
             <input
+              id="admin-create-email"
               type="email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               placeholder="hassan@eduhub.com"
               required
-              className="w-full h-10 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
+              className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="block font-bold text-[#1E1B2E]">Role</label>
+              <label htmlFor="admin-create-role" className="block font-bold text-[#1E1B2E]">Role</label>
               <select
+                id="admin-create-role"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as AdminUserRecord['role'])}
-                className="w-full h-10 px-3 rounded-[10px] bg-white border border-[#E6E1F5] font-semibold"
+                className="w-full h-11 px-3 rounded-[10px] bg-white border border-[#E6E1F5] font-semibold"
               >
                 <option value="student">Student</option>
                 <option value="instructor">Instructor</option>
@@ -979,13 +986,14 @@ export const AdminUsersPage: React.FC = () => {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="block font-bold text-[#1E1B2E]">Temporary password</label>
+              <label htmlFor="admin-create-pass" className="block font-bold text-[#1E1B2E]">Temporary password</label>
               <div className="flex items-center gap-1.5">
                 <input
+                  id="admin-create-pass"
                   type="text"
                   value={newTempPassword}
                   onChange={(e) => setNewTempPassword(e.target.value)}
-                  className="w-full h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] font-mono text-[12px]"
+                  className="w-full h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] font-mono text-[12px]"
                 />
               </div>
             </div>
@@ -1302,6 +1310,7 @@ export const AdminCoursesPage: React.FC = () => {
                       <img
                         src={c.thumbnail}
                         alt={c.title}
+                        onError={handleImageError}
                         className="w-12 h-9 rounded-[6px] object-cover shrink-0 border border-[#E6E1F5]"
                       />
                       <div>
@@ -1434,6 +1443,7 @@ export const AdminCoursesPage: React.FC = () => {
             </p>
             <textarea
               rows={3}
+              aria-label="Course rejection reason"
               value={rejectReasonInput}
               onChange={(e) => {
                 setRejectReasonInput(e.target.value);
@@ -1488,6 +1498,7 @@ export const AdminCoursesPage: React.FC = () => {
             <img
               src={previewCourse.thumbnail}
               alt={previewCourse.title}
+              onError={handleImageError}
               className="w-full h-44 rounded-[12px] object-cover border border-[#E6E1F5]"
             />
             <div className="space-y-2">
@@ -1742,18 +1753,20 @@ export const AdminCategoriesPage: React.FC = () => {
       >
         <div className="space-y-4 text-[14px]">
           <div className="space-y-1">
-            <label className="block font-bold text-[#1E1B2E]">Category name *</label>
+            <label htmlFor="admin-cat-name" className="block font-bold text-[#1E1B2E]">Category name *</label>
             <input
+              id="admin-cat-name"
               type="text"
               value={catName}
               onChange={(e) => setCatName(e.target.value)}
               placeholder="e.g. Cloud & DevOps"
-              className="w-full h-10 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
+              className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5]"
             />
           </div>
           <div className="space-y-1">
-            <label className="block font-bold text-[#1E1B2E]">Description</label>
+            <label htmlFor="admin-cat-desc" className="block font-bold text-[#1E1B2E]">Description</label>
             <textarea
+              id="admin-cat-desc"
               rows={3}
               value={catDesc}
               onChange={(e) => setCatDesc(e.target.value)}
@@ -1971,10 +1984,11 @@ export const AdminSettingsPage: React.FC = () => {
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-bold text-[#1E1B2E]">
+            <label htmlFor="platform-name-input" className="block text-[13px] font-bold text-[#1E1B2E]">
               Platform name
             </label>
             <input
+              id="platform-name-input"
               type="text"
               value={platformName}
               onChange={(e) => setPlatformName(e.target.value)}
@@ -1982,10 +1996,11 @@ export const AdminSettingsPage: React.FC = () => {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-bold text-[#1E1B2E]">
+            <label htmlFor="platform-pass-score-input" className="block text-[13px] font-bold text-[#1E1B2E]">
               Default exam pass score (%)
             </label>
             <input
+              id="platform-pass-score-input"
               type="number"
               min={50}
               max={100}
@@ -1995,10 +2010,11 @@ export const AdminSettingsPage: React.FC = () => {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-bold text-[#1E1B2E]">
+            <label htmlFor="platform-image-limit-input" className="block text-[13px] font-bold text-[#1E1B2E]">
               Cover image upload limit (MB, JPG/PNG)
             </label>
             <input
+              id="platform-image-limit-input"
               type="number"
               min={1}
               max={50}
@@ -2008,10 +2024,11 @@ export const AdminSettingsPage: React.FC = () => {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="block text-[13px] font-bold text-[#1E1B2E]">
+            <label htmlFor="platform-video-limit-input" className="block text-[13px] font-bold text-[#1E1B2E]">
               Video upload limit (GB, MP4)
             </label>
             <input
+              id="platform-video-limit-input"
               type="number"
               min={1}
               max={10}

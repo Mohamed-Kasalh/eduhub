@@ -14,6 +14,7 @@ import { useApp } from '../../context/AppContext';
 import { Button, ComponentVisualState } from './Button';
 import { FeaturedStickerTag, StatusChip } from './Badges';
 import { Avatar, ProgressBar, Skeleton } from './DataDisplay';
+import { handleImageError } from '../../utils/imageFallback';
 
 export interface CourseCardProps {
   course: Course;
@@ -76,6 +77,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
             <img
               src={course.thumbnail}
               alt={course.title}
+              onError={handleImageError}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               loading="lazy"
             />
@@ -90,7 +92,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
               toggleWishlist(course.id);
             }}
             aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
-            className={`absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm border ${
+            className={`absolute top-2.5 right-2.5 w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-sm border ${
               isWishlisted
                 ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626]'
                 : 'bg-white/95 border-[#E6E1F5] text-[#5F5B75] hover:text-[#DC2626]'
@@ -215,6 +217,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
           <img
             src={course.thumbnail}
             alt={course.title}
+            onError={handleImageError}
             className={`w-full h-full object-cover transition-transform duration-300 ${
               isHovered ? 'scale-105' : 'group-hover:scale-105'
             }`}
@@ -242,7 +245,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
               toggleWishlist(course.id);
             }}
             aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
-            className={`pointer-events-auto w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs border ${
+            className={`pointer-events-auto w-11 h-11 -mr-1 -mt-1 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs border ${
               isWishlisted
                 ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626]'
                 : 'bg-white/95 border-[#E6E1F5] text-[#5F5B75] hover:text-[#DC2626]'
@@ -388,7 +391,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({
                 e.preventDefault();
                 toggleWishlist(course.id);
               }}
-              className={`flex-1 h-9 px-3 rounded-[10px] text-[13px] font-bold inline-flex items-center justify-center gap-1.5 border transition-colors cursor-pointer ${
+              className={`flex-1 min-h-11 px-3 rounded-[10px] text-[13px] font-bold inline-flex items-center justify-center gap-1.5 border transition-colors cursor-pointer ${
                 isWishlisted
                   ? 'bg-[#FEF2F2] border-[#DC2626]/30 text-[#DC2626]'
                   : 'bg-[#F3EFFF] border-[#E6E1F5] text-[#6D4AE0] hover:bg-[#E6E1F5]'

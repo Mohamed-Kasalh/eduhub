@@ -29,6 +29,8 @@ import {
   COURSE_FILTER_META,
   Course,
 } from '../../data/mockData';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
+import { handleImageError } from '../../utils/imageFallback';
 
 type SortOption = 'popular' | 'newest' | 'rating' | 'price-asc' | 'price-desc';
 type PriceMode = 'all' | 'free' | 'paid';
@@ -121,6 +123,7 @@ export const CoursesCatalogPage: React.FC = () => {
 
   // Mobile bottom-sheet filter drawer state
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const mobileFilterRef = useDialogA11y(mobileFilterOpen, () => setMobileFilterOpen(false));
 
   // Skeleton loading state
   const [isSimulatingLoading, setIsSimulatingLoading] = useState(false);
@@ -893,13 +896,14 @@ export const CoursesCatalogPage: React.FC = () => {
                   }
                 }}
                 placeholder="Search courses, skills, topics, or instructors (e.g. React, Python, Salma Nabil)..."
-                className="w-full h-11 px-3.5 text-[16px] text-[#1E1B2E] placeholder:text-[#5F5B75]/65 focus:outline-none"
+                aria-label="Search courses, skills, topics, or instructors"
+                className="w-full h-11 px-3.5 text-[16px] text-[#1E1B2E] placeholder:text-[#5F5B75] focus:outline-none"
               />
               {queryInput && (
                 <button
                   type="button"
                   onClick={() => setQueryInput('')}
-                  className="p-2 text-[#5F5B75] hover:text-[#1E1B2E] rounded-full hover:bg-[#F3EFFF] cursor-pointer"
+                  className="w-11 h-11 flex items-center justify-center text-[#5F5B75] hover:text-[#1E1B2E] rounded-full hover:bg-[#F3EFFF] cursor-pointer shrink-0"
                   aria-label="Clear search query"
                 >
                   <X className="w-4 h-4" />
@@ -1003,6 +1007,7 @@ export const CoursesCatalogPage: React.FC = () => {
                           <img
                             src={c.thumbnail}
                             alt={c.title}
+                            onError={handleImageError}
                             className="w-12 h-9 rounded-[6px] object-cover shrink-0 border border-[#E6E1F5]"
                           />
                           <div className="min-w-0">
@@ -1074,7 +1079,7 @@ export const CoursesCatalogPage: React.FC = () => {
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortOption)}
                     aria-label="Sort courses by"
-                    className="h-9 pl-3 pr-8 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[#1E1B2E] font-semibold text-[14px] focus:outline-none focus:border-[#6D4AE0] cursor-pointer"
+                    className="h-11 pl-3 pr-8 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[#1E1B2E] font-semibold text-[14px] focus:outline-none focus:border-[#6D4AE0] cursor-pointer"
                   >
                     <option value="popular">Most popular</option>
                     <option value="newest">Newest</option>
@@ -1218,12 +1223,14 @@ export const CoursesCatalogPage: React.FC = () => {
         <div className="lg:hidden fixed inset-0 z-50 flex flex-col justify-end bg-[#1E1B2E]/55 backdrop-blur-xs">
           <div className="flex-1" onClick={() => setMobileFilterOpen(false)} />
           <div
+            ref={mobileFilterRef}
             role="dialog"
             aria-modal="true"
             aria-label="Course filters"
-            className="w-full max-h-[85vh] rounded-t-[20px] bg-white border-t border-[#E6E1F5] shadow-purple-lg flex flex-col overflow-hidden"
+            tabIndex={-1}
+            className="w-full max-h-[85dvh] rounded-t-[20px] bg-white border-t border-[#E6E1F5] shadow-purple-lg flex flex-col overflow-hidden focus:outline-none"
           >
-            <div className="px-5 py-4 border-b border-[#E6E1F5] flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-[#E6E1F5] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="w-4 h-4 text-[#6D4AE0]" />
                 <h3 className="font-display font-bold text-[20px] text-[#1E1B2E]">
@@ -1233,18 +1240,18 @@ export const CoursesCatalogPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setMobileFilterOpen(false)}
-                className="p-1.5 rounded-[10px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
+                className="w-11 h-11 -mr-2 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
                 aria-label="Close filter drawer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 flex-1 overflow-y-auto">
+            <div className="p-5 flex-1 min-h-0 overflow-y-auto">
               {renderFilterSidebarContent()}
             </div>
 
-            <div className="p-4 bg-[#FAF8FF] border-t border-[#E6E1F5] grid grid-cols-2 gap-3">
+            <div className="p-4 bg-[#FAF8FF] border-t border-[#E6E1F5] grid grid-cols-2 gap-3 shrink-0 sticky bottom-0">
               <Button
                 variant="ghost"
                 fullWidth

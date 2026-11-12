@@ -456,7 +456,8 @@ export const InstructorQuestionBankPage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search question text or section..."
-              className="w-full h-10 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
+              aria-label="Search question text or section"
+              className="w-full h-11 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
             />
           </div>
 
@@ -465,7 +466,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
               value={selectedCourseId}
               onChange={(e) => setSelectedCourseId(e.target.value)}
               aria-label="Filter by course"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
+              className="w-full h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
             >
               <option value="all">All courses ({bankQuestions.length})</option>
               <option value="course-1">Complete React Developer Course</option>
@@ -478,7 +479,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
               value={selectedSectionId}
               onChange={(e) => setSelectedSectionId(e.target.value)}
               aria-label="Filter by section"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
+              className="w-full h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
             >
               <option value="all">All sections</option>
               {SECTION_OPTIONS.map((sec) => (
@@ -494,7 +495,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
               aria-label="Filter by difficulty"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
+              className="w-full h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-semibold text-[#1E1B2E]"
             >
               <option value="all">All difficulties</option>
               <option value="Easy">Easy</option>
@@ -589,6 +590,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={isSelected}
+                        aria-label={`Select question ${item.id}`}
                         onChange={() =>
                           setSelectedIds((prev) =>
                             prev.includes(item.id)
@@ -720,22 +722,24 @@ export const InstructorQuestionBankPage: React.FC = () => {
           {/* Course & Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="block text-[12px] font-bold text-[#1E1B2E]">Course</label>
+              <label htmlFor="qbank-course-select" className="block text-[12px] font-bold text-[#1E1B2E]">Course</label>
               <select
+                id="qbank-course-select"
                 value={qCourseId}
                 onChange={(e) => setQCourseId(e.target.value)}
-                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
               >
                 <option value="course-1">Complete React Developer</option>
                 <option value="course-5">Full-Stack TypeScript</option>
               </select>
             </div>
             <div className="space-y-1">
-              <label className="block text-[12px] font-bold text-[#1E1B2E]">Section</label>
+              <label htmlFor="qbank-section-select" className="block text-[12px] font-bold text-[#1E1B2E]">Section</label>
               <select
+                id="qbank-section-select"
                 value={qSectionId}
                 onChange={(e) => setQSectionId(e.target.value)}
-                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
               >
                 {SECTION_OPTIONS.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -748,8 +752,9 @@ export const InstructorQuestionBankPage: React.FC = () => {
 
           {/* Question Text */}
           <div className="space-y-1.5">
-            <label className="block font-bold text-[#1E1B2E]">Question text *</label>
+            <label htmlFor="qbank-question-text" className="block font-bold text-[#1E1B2E]">Question text *</label>
             <textarea
+              id="qbank-question-text"
               rows={3}
               value={qText}
               onChange={(e) => {
@@ -763,17 +768,18 @@ export const InstructorQuestionBankPage: React.FC = () => {
 
           {/* Optional Image */}
           <div className="space-y-1.5">
-            <label className="block text-[12px] font-bold text-[#5F5B75]">
+            <label htmlFor="qbank-image-url" className="block text-[12px] font-bold text-[#5F5B75]">
               Optional diagram / code snippet image URL
             </label>
             <div className="flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-[#6D4AE0] shrink-0" />
               <input
+                id="qbank-image-url"
                 type="text"
                 value={qImageUrl}
                 onChange={(e) => setQImageUrl(e.target.value)}
                 placeholder="https://images.unsplash.com/..."
-                className="flex-1 h-9 px-3 rounded-[8px] bg-[#FAF8FF] border border-[#E6E1F5] text-[12px]"
+                className="flex-1 h-10 px-3 rounded-[8px] bg-[#FAF8FF] border border-[#E6E1F5] text-[12px]"
               />
             </div>
           </div>
@@ -781,9 +787,9 @@ export const InstructorQuestionBankPage: React.FC = () => {
           {/* 2–6 Options with Correct Toggle and Add/Remove */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="font-bold text-[#1E1B2E]">
+              <span className="font-bold text-[#1E1B2E]">
                 Answer options ({qOptions.length}/6)
-              </label>
+              </span>
               <span className="text-[11px] font-semibold text-[#6D4AE0]">
                 {qType === 'multiple'
                   ? 'Check all correct options'
@@ -806,12 +812,13 @@ export const InstructorQuestionBankPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleToggleCorrectOption(idx)}
-                      className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold cursor-pointer ${
+                      className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold cursor-pointer ${
                         isCorrect
                           ? 'bg-[#16A34A] text-white'
                           : 'bg-[#FAF8FF] border border-[#E6E1F5] text-[#5F5B75]'
                       }`}
                       title={isCorrect ? 'Correct answer' : 'Mark as correct'}
+                      aria-label={`Option ${String.fromCharCode(65 + idx)}: ${isCorrect ? 'Marked correct' : 'Mark as correct'}`}
                     >
                       {isCorrect ? <Check className="w-3.5 h-3.5" /> : String.fromCharCode(65 + idx)}
                     </button>
@@ -826,7 +833,8 @@ export const InstructorQuestionBankPage: React.FC = () => {
                         );
                       }}
                       placeholder={`Option ${String.fromCharCode(65 + idx)}...`}
-                      className="flex-1 h-8 px-2 text-[13px] bg-transparent focus:outline-none"
+                      aria-label={`Option ${String.fromCharCode(65 + idx)} text`}
+                      className="flex-1 h-9 px-2 text-[13px] bg-transparent focus:outline-none"
                     />
                     {qType !== 'boolean' && qOptions.length > 2 && (
                       <button
@@ -839,8 +847,9 @@ export const InstructorQuestionBankPage: React.FC = () => {
                               .map((i) => (i > idx ? i - 1 : i))
                           );
                         }}
-                        className="p-1 text-[#5F5B75] hover:text-[#DC2626] cursor-pointer"
+                        className="w-9 h-9 flex items-center justify-center text-[#5F5B75] hover:text-[#DC2626] cursor-pointer"
                         title="Remove option"
+                        aria-label={`Remove option ${String.fromCharCode(65 + idx)}`}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -854,7 +863,7 @@ export const InstructorQuestionBankPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setQOptions((prev) => [...prev, ''])}
-                className="text-[12px] font-bold text-[#6D4AE0] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                className="text-[12px] font-bold text-[#6D4AE0] hover:underline inline-flex items-center gap-1 cursor-pointer min-h-[36px]"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add option (up to 6)</span>
@@ -865,15 +874,16 @@ export const InstructorQuestionBankPage: React.FC = () => {
           {/* Difficulty & Points */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="block text-[12px] font-bold text-[#1E1B2E]">
+              <label htmlFor="qbank-difficulty-select" className="block text-[12px] font-bold text-[#1E1B2E]">
                 Difficulty
               </label>
               <select
+                id="qbank-difficulty-select"
                 value={qDifficulty}
                 onChange={(e) =>
                   setQDifficulty(e.target.value as InstructorQuestionItem['difficulty'])
                 }
-                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
               >
                 <option value="Easy">Easy</option>
                 <option value="Medium">Medium</option>
@@ -881,24 +891,26 @@ export const InstructorQuestionBankPage: React.FC = () => {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="block text-[12px] font-bold text-[#1E1B2E]">Points</label>
+              <label htmlFor="qbank-points-input" className="block text-[12px] font-bold text-[#1E1B2E]">Points</label>
               <input
+                id="qbank-points-input"
                 type="number"
                 min={1}
                 max={25}
                 value={qPoints}
                 onChange={(e) => setQPoints(Number(e.target.value))}
-                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px] font-bold"
+                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px] font-bold"
               />
             </div>
           </div>
 
           {/* Explanation */}
           <div className="space-y-1">
-            <label className="block text-[12px] font-bold text-[#1E1B2E]">
+            <label htmlFor="qbank-explanation" className="block text-[12px] font-bold text-[#1E1B2E]">
               Answer explanation (shown on exam review)
             </label>
             <textarea
+              id="qbank-explanation"
               rows={2}
               value={qExplanation}
               onChange={(e) => setQExplanation(e.target.value)}
@@ -1091,6 +1103,7 @@ export const InstructorExamSettingsPage: React.FC = () => {
           <select
             value={selectedCourseId}
             onChange={(e) => setSelectedCourseId(e.target.value)}
+            aria-label="Select course for exam settings"
             className="h-11 px-3.5 rounded-[10px] bg-white border-2 border-[#6D4AE0] text-[14px] font-bold text-[#1E1B2E] cursor-pointer"
           >
             <option value="course-5">
@@ -1144,10 +1157,11 @@ export const InstructorExamSettingsPage: React.FC = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-bold text-[#1E1B2E]">
+                <label htmlFor="exam-num-questions" className="block text-[13px] font-bold text-[#1E1B2E]">
                   Questions
                 </label>
                 <input
+                  id="exam-num-questions"
                   type="number"
                   min={5}
                   max={50}
@@ -1157,10 +1171,11 @@ export const InstructorExamSettingsPage: React.FC = () => {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-bold text-[#1E1B2E]">
+                <label htmlFor="exam-duration-mins" className="block text-[13px] font-bold text-[#1E1B2E]">
                   Duration (min)
                 </label>
                 <input
+                  id="exam-duration-mins"
                   type="number"
                   min={10}
                   max={180}
@@ -1170,10 +1185,11 @@ export const InstructorExamSettingsPage: React.FC = () => {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-bold text-[#1E1B2E]">
+                <label htmlFor="exam-pass-percent" className="block text-[13px] font-bold text-[#1E1B2E]">
                   Pass score (%)
                 </label>
                 <input
+                  id="exam-pass-percent"
                   type="number"
                   min={50}
                   max={100}
@@ -1183,10 +1199,11 @@ export const InstructorExamSettingsPage: React.FC = () => {
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="block text-[13px] font-bold text-[#1E1B2E]">
+                <label htmlFor="exam-max-attempts" className="block text-[13px] font-bold text-[#1E1B2E]">
                   Max attempts
                 </label>
                 <input
+                  id="exam-max-attempts"
                   type="number"
                   min={1}
                   max={10}
@@ -1282,6 +1299,7 @@ export const InstructorExamSettingsPage: React.FC = () => {
                     max={100}
                     step={5}
                     value={slider.val}
+                    aria-label={slider.label}
                     onChange={(e) =>
                       handleAdjustDifficulty(slider.key, Number(e.target.value))
                     }

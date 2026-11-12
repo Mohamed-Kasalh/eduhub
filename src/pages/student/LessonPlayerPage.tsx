@@ -43,6 +43,9 @@ import {
 import { BrandLogo } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS } from '../../data/mockData';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
+import { handleImageError } from '../../utils/imageFallback';
+import { usePageTitle } from '../../hooks/usePageTitle';
 import {
   STUDENT_COURSE_SECTIONS,
   ALL_STUDENT_LESSONS,
@@ -90,6 +93,7 @@ export const LessonPlayerPage: React.FC = () => {
   }, [lessonId]);
 
   const activeLesson: StudentLessonItem = ALL_STUDENT_LESSONS[activeLessonIndex];
+  usePageTitle(`${activeLesson.title} • ${course.title}`);
   const prevLesson: StudentLessonItem | null =
     activeLessonIndex > 0 ? ALL_STUDENT_LESSONS[activeLessonIndex - 1] : null;
   const nextLesson: StudentLessonItem | null =
@@ -138,6 +142,7 @@ export const LessonPlayerPage: React.FC = () => {
     STUDENT_COURSE_SECTIONS.map((s) => s.id)
   );
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const mobileSidebarRef = useDialogA11y(mobileSidebarOpen, () => setMobileSidebarOpen(false));
 
   // Comments state
   const [commentInput, setCommentInput] = useState('');
@@ -651,6 +656,7 @@ export const LessonPlayerPage: React.FC = () => {
             <img
               src={course.thumbnail}
               alt={activeLesson.title}
+              onError={handleImageError}
               className="absolute inset-0 w-full h-full object-cover opacity-35 select-none pointer-events-none"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#1E1B2E] via-[#1E1B2E]/35 to-[#1E1B2E]/60 pointer-events-none" />
@@ -1171,6 +1177,7 @@ export const LessonPlayerPage: React.FC = () => {
                           value={commentInput}
                           onChange={(e) => setCommentInput(e.target.value)}
                           placeholder="Ask a question or share an insight about this lesson..."
+                          aria-label="Write a lesson comment"
                           className="w-full p-3 rounded-[10px] bg-white border border-[#E6E1F5] focus:border-[#6D4AE0] focus:outline-none text-[14px] text-[#1E1B2E]"
                         />
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1368,6 +1375,7 @@ export const LessonPlayerPage: React.FC = () => {
                                   rows={3}
                                   value={editingText}
                                   onChange={(e) => setEditingText(e.target.value)}
+                                  aria-label="Edit lesson comment"
                                   className="w-full p-3 rounded-[10px] bg-white border border-[#6D4AE0] text-[14px] text-[#1E1B2E] focus:outline-none"
                                 />
                                 <div className="flex items-center gap-2">
@@ -1434,6 +1442,7 @@ export const LessonPlayerPage: React.FC = () => {
                                   value={replyText}
                                   onChange={(e) => setReplyText(e.target.value)}
                                   placeholder={`Reply to ${comment.authorName}...`}
+                                  aria-label={`Reply to ${comment.authorName}`}
                                   className="w-full p-2.5 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] focus:border-[#6D4AE0] focus:outline-none text-[13px] text-[#1E1B2E]"
                                 />
                                 <div className="flex items-center gap-2">
@@ -1554,25 +1563,27 @@ export const LessonPlayerPage: React.FC = () => {
         <div className="lg:hidden fixed inset-0 z-50 flex justify-end bg-[#1E1B2E]/55 backdrop-blur-xs">
           <div className="flex-1" onClick={() => setMobileSidebarOpen(false)} />
           <div
+            ref={mobileSidebarRef}
             role="dialog"
             aria-modal="true"
             aria-label="Course content sidebar"
-            className="w-full max-w-sm bg-white h-full shadow-purple-lg border-l border-[#E6E1F5] flex flex-col"
+            tabIndex={-1}
+            className="w-full max-w-sm bg-white h-full max-h-[100dvh] shadow-purple-lg border-l border-[#E6E1F5] flex flex-col focus:outline-none"
           >
-            <div className="px-4 py-3 border-b border-[#E6E1F5] flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-[#E6E1F5] flex items-center justify-between shrink-0">
               <span className="font-display font-bold text-[18px] text-[#1E1B2E]">
                 Course content
               </span>
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="p-1.5 rounded-[8px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
+                className="w-11 h-11 -mr-2 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
                 aria-label="Close course content drawer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-hidden">{renderCourseContentSidebar()}</div>
+            <div className="flex-1 min-h-0 overflow-hidden">{renderCourseContentSidebar()}</div>
           </div>
         </div>
       )}

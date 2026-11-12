@@ -1,66 +1,186 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { createBrowserRouter, Outlet, ScrollRestoration } from 'react-router';
 import { useApp } from './context/AppContext';
 import { PublicShell, RoleGuard } from './components/layout/RoleGuard';
 import { DashboardShell } from './components/layout/DashboardShell';
 import { PreviewSwitcher } from './components/layout/PreviewSwitcher';
 import { OfflineBanner } from './components/layout/OfflineBanner';
-import { ToastViewport } from './components/ui';
-import { DesignSystemPage } from './pages/DesignSystemPage';
-import {
-  HomePage,
-  VerifyCertificatePage,
-} from './pages/public/PublicPages';
-import { CoursesCatalogPage } from './pages/public/CoursesCatalogPage';
-import { CourseDetailPage } from './pages/public/CourseDetailPage';
-import {
-  LoginPage,
-  SignupPage,
-  VerifyOtpPage,
-  ForgotPasswordPage,
-  ResetPasswordPage,
-} from './pages/auth/AuthPages';
-import {
-  StudentDashboardPage,
-  StudentCoursesPage,
-  StudentCourseProgressPage,
-  LessonPlayerPage,
-  ExamPage,
-  ExamResultPage,
-  CertificatesListPage,
-  CertificateDetailPage,
-} from './pages/student/StudentPages';
-import { ProfilePage } from './pages/shared/ProfilePage';
-import { NotificationsPage } from './pages/shared/NotificationsPage';
-import {
-  InstructorDashboardPage,
-  InstructorCoursesPage,
-  InstructorCreateCoursePage,
-  InstructorQuestionBankPage,
-  InstructorExamSettingsPage,
-  InstructorStudentsPage,
-  InstructorCommentsPage,
-} from './pages/instructor/InstructorPages';
-import {
-  AdminDashboardPage,
-  AdminUsersPage,
-  AdminCoursesPage,
-  AdminCategoriesPage,
-  AdminCertificatesPage,
-  AdminSettingsPage,
-} from './pages/admin/AdminPages';
-import {
-  SupervisorDashboardPage,
-  SupervisorCommentsPage,
-  SupervisorCourseReviewPage,
-  SupervisorReportsPage,
-} from './pages/supervisor/SupervisorPages';
+import { Skeleton, ToastViewport } from './components/ui';
+import { usePageTitle } from './hooks/usePageTitle';
 import {
   Forbidden403Page,
   NotFound404Page,
   Server500Page,
   RouteErrorBoundary,
 } from './pages/ErrorPages';
+
+const DesignSystemPage = lazy(() =>
+  import('./pages/DesignSystemPage').then((m) => ({ default: m.DesignSystemPage }))
+);
+const HomePage = lazy(() =>
+  import('./pages/public/PublicPages').then((m) => ({ default: m.HomePage }))
+);
+const CoursesCatalogPage = lazy(() =>
+  import('./pages/public/CoursesCatalogPage').then((m) => ({ default: m.CoursesCatalogPage }))
+);
+const CourseDetailPage = lazy(() =>
+  import('./pages/public/CourseDetailPage').then((m) => ({ default: m.CourseDetailPage }))
+);
+const VerifyCertificatePage = lazy(() =>
+  import('./pages/student/CertificatePages').then((m) => ({ default: m.VerifyCertificatePage }))
+);
+
+const LoginPage = lazy(() =>
+  import('./pages/auth/AuthPages').then((m) => ({ default: m.LoginPage }))
+);
+const SignupPage = lazy(() =>
+  import('./pages/auth/AuthPages').then((m) => ({ default: m.SignupPage }))
+);
+const VerifyOtpPage = lazy(() =>
+  import('./pages/auth/AuthPages').then((m) => ({ default: m.VerifyOtpPage }))
+);
+const ForgotPasswordPage = lazy(() =>
+  import('./pages/auth/AuthPages').then((m) => ({ default: m.ForgotPasswordPage }))
+);
+const ResetPasswordPage = lazy(() =>
+  import('./pages/auth/AuthPages').then((m) => ({ default: m.ResetPasswordPage }))
+);
+
+const LessonPlayerPage = lazy(() =>
+  import('./pages/student/LessonPlayerPage').then((m) => ({ default: m.LessonPlayerPage }))
+);
+const ExamPage = lazy(() =>
+  import('./pages/student/ExamPages').then((m) => ({ default: m.ExamPage }))
+);
+const ExamResultPage = lazy(() =>
+  import('./pages/student/ExamPages').then((m) => ({ default: m.ExamResultPage }))
+);
+const CertificatesListPage = lazy(() =>
+  import('./pages/student/CertificatePages').then((m) => ({ default: m.CertificatesListPage }))
+);
+const CertificateDetailPage = lazy(() =>
+  import('./pages/student/CertificatePages').then((m) => ({ default: m.CertificateDetailPage }))
+);
+const StudentDashboardPage = lazy(() =>
+  import('./pages/student/StudentPages').then((m) => ({ default: m.StudentDashboardPage }))
+);
+const StudentCoursesPage = lazy(() =>
+  import('./pages/student/StudentPages').then((m) => ({ default: m.StudentCoursesPage }))
+);
+const StudentCourseProgressPage = lazy(() =>
+  import('./pages/student/StudentPages').then((m) => ({ default: m.StudentCourseProgressPage }))
+);
+
+const ProfilePage = lazy(() =>
+  import('./pages/shared/ProfilePage').then((m) => ({ default: m.ProfilePage }))
+);
+const NotificationsPage = lazy(() =>
+  import('./pages/shared/NotificationsPage').then((m) => ({ default: m.NotificationsPage }))
+);
+
+const InstructorDashboardPage = lazy(() =>
+  import('./pages/instructor/InstructorPages').then((m) => ({
+    default: m.InstructorDashboardPage,
+  }))
+);
+const InstructorCoursesPage = lazy(() =>
+  import('./pages/instructor/InstructorPages').then((m) => ({
+    default: m.InstructorCoursesPage,
+  }))
+);
+const InstructorCreateCoursePage = lazy(() =>
+  import('./pages/instructor/InstructorCourseWizard').then((m) => ({
+    default: m.InstructorCreateCoursePage,
+  }))
+);
+const InstructorQuestionBankPage = lazy(() =>
+  import('./pages/instructor/InstructorQuestionBankAndExam').then((m) => ({
+    default: m.InstructorQuestionBankPage,
+  }))
+);
+const InstructorExamSettingsPage = lazy(() =>
+  import('./pages/instructor/InstructorQuestionBankAndExam').then((m) => ({
+    default: m.InstructorExamSettingsPage,
+  }))
+);
+const InstructorStudentsPage = lazy(() =>
+  import('./pages/instructor/InstructorPages').then((m) => ({
+    default: m.InstructorStudentsPage,
+  }))
+);
+const InstructorCommentsPage = lazy(() =>
+  import('./pages/instructor/InstructorPages').then((m) => ({
+    default: m.InstructorCommentsPage,
+  }))
+);
+
+const AdminDashboardPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminDashboardPage }))
+);
+const AdminUsersPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminUsersPage }))
+);
+const AdminCoursesPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminCoursesPage }))
+);
+const AdminCategoriesPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminCategoriesPage }))
+);
+const AdminCertificatesPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminCertificatesPage }))
+);
+const AdminSettingsPage = lazy(() =>
+  import('./pages/admin/AdminPages').then((m) => ({ default: m.AdminSettingsPage }))
+);
+
+const SupervisorDashboardPage = lazy(() =>
+  import('./pages/supervisor/SupervisorPages').then((m) => ({
+    default: m.SupervisorDashboardPage,
+  }))
+);
+const SupervisorCommentsPage = lazy(() =>
+  import('./pages/supervisor/SupervisorPages').then((m) => ({
+    default: m.SupervisorCommentsPage,
+  }))
+);
+const SupervisorCourseReviewPage = lazy(() =>
+  import('./pages/supervisor/SupervisorPages').then((m) => ({
+    default: m.SupervisorCourseReviewPage,
+  }))
+);
+const SupervisorReportsPage = lazy(() =>
+  import('./pages/supervisor/SupervisorPages').then((m) => ({
+    default: m.SupervisorReportsPage,
+  }))
+);
+
+const PageRouteSkeleton: React.FC = () => (
+  <div
+    className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6"
+    aria-busy="true"
+    aria-label="Loading page content"
+  >
+    <div className="space-y-3">
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-10 w-80 max-w-full" />
+      <Skeleton className="h-5 w-96 max-w-full" />
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <Skeleton className="h-48 rounded-[12px]" />
+      <Skeleton className="h-48 rounded-[12px]" />
+      <Skeleton className="h-48 rounded-[12px]" />
+    </div>
+    <Skeleton className="h-64 rounded-[12px]" />
+  </div>
+);
+
+const TitledRoute: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => {
+  usePageTitle(title);
+  return <Suspense fallback={<PageRouteSkeleton />}>{children}</Suspense>;
+};
 
 const RootLayout: React.FC = () => {
   const { toasts, removeToast } = useApp();
@@ -103,7 +223,9 @@ export const router = createBrowserRouter([
         index: true,
         element: (
           <PublicShell>
-            <HomePage />
+            <TitledRoute title="Learn New Skills Online">
+              <HomePage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -111,7 +233,9 @@ export const router = createBrowserRouter([
         path: 'design-system',
         element: (
           <PublicShell>
-            <DesignSystemPage />
+            <TitledRoute title="Design System">
+              <DesignSystemPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -119,7 +243,9 @@ export const router = createBrowserRouter([
         path: 'login',
         element: (
           <PublicShell>
-            <LoginPage />
+            <TitledRoute title="Log in">
+              <LoginPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -127,7 +253,9 @@ export const router = createBrowserRouter([
         path: 'signup',
         element: (
           <PublicShell>
-            <SignupPage />
+            <TitledRoute title="Sign up">
+              <SignupPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -135,7 +263,9 @@ export const router = createBrowserRouter([
         path: 'verify-otp',
         element: (
           <PublicShell>
-            <VerifyOtpPage />
+            <TitledRoute title="Verify Email">
+              <VerifyOtpPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -143,7 +273,9 @@ export const router = createBrowserRouter([
         path: 'forgot-password',
         element: (
           <PublicShell>
-            <ForgotPasswordPage />
+            <TitledRoute title="Forgot Password">
+              <ForgotPasswordPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -151,7 +283,9 @@ export const router = createBrowserRouter([
         path: 'reset-password',
         element: (
           <PublicShell>
-            <ResetPasswordPage />
+            <TitledRoute title="Reset Password">
+              <ResetPasswordPage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -159,7 +293,9 @@ export const router = createBrowserRouter([
         path: 'courses',
         element: (
           <AdaptiveShell>
-            <CoursesCatalogPage />
+            <TitledRoute title="Courses">
+              <CoursesCatalogPage />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },
@@ -167,7 +303,9 @@ export const router = createBrowserRouter([
         path: 'courses/:id',
         element: (
           <AdaptiveShell>
-            <CourseDetailPage />
+            <TitledRoute title="Course Details">
+              <CourseDetailPage />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },
@@ -175,7 +313,9 @@ export const router = createBrowserRouter([
         path: 'verify/:id',
         element: (
           <PublicShell>
-            <VerifyCertificatePage />
+            <TitledRoute title="Verify Certificate">
+              <VerifyCertificatePage />
+            </TitledRoute>
           </PublicShell>
         ),
       },
@@ -185,7 +325,9 @@ export const router = createBrowserRouter([
         path: 'learn/:courseId/:lessonId',
         element: (
           <RoleGuard allowedRoles={['student']} focusedLayout>
-            <LessonPlayerPage />
+            <TitledRoute title="Lesson Player">
+              <LessonPlayerPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -193,7 +335,9 @@ export const router = createBrowserRouter([
         path: 'exam/:courseId',
         element: (
           <RoleGuard allowedRoles={['student']} focusedLayout>
-            <ExamPage />
+            <TitledRoute title="Final Exam">
+              <ExamPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -201,7 +345,9 @@ export const router = createBrowserRouter([
         path: 'exam/:courseId/result',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <ExamResultPage />
+            <TitledRoute title="Exam Results">
+              <ExamResultPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -209,7 +355,9 @@ export const router = createBrowserRouter([
         path: 'certificates',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <CertificatesListPage />
+            <TitledRoute title="My Certificates">
+              <CertificatesListPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -217,7 +365,9 @@ export const router = createBrowserRouter([
         path: 'certificates/:id',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <CertificateDetailPage />
+            <TitledRoute title="Certificate Preview">
+              <CertificateDetailPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -225,7 +375,9 @@ export const router = createBrowserRouter([
         path: 'student/dashboard',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <StudentDashboardPage />
+            <TitledRoute title="Student Dashboard">
+              <StudentDashboardPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -233,7 +385,9 @@ export const router = createBrowserRouter([
         path: 'student/courses',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <StudentCoursesPage />
+            <TitledRoute title="My Courses">
+              <StudentCoursesPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -241,7 +395,9 @@ export const router = createBrowserRouter([
         path: 'student/progress/:courseId',
         element: (
           <RoleGuard allowedRoles={['student']}>
-            <StudentCourseProgressPage />
+            <TitledRoute title="Course Progress">
+              <StudentCourseProgressPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -251,7 +407,9 @@ export const router = createBrowserRouter([
         path: 'profile',
         element: (
           <RoleGuard allowedRoles={['student', 'instructor', 'admin', 'supervisor']}>
-            <ProfilePage />
+            <TitledRoute title="Profile & Settings">
+              <ProfilePage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -259,7 +417,9 @@ export const router = createBrowserRouter([
         path: 'notifications',
         element: (
           <RoleGuard allowedRoles={['student', 'instructor', 'admin', 'supervisor']}>
-            <NotificationsPage />
+            <TitledRoute title="Notifications">
+              <NotificationsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -269,7 +429,9 @@ export const router = createBrowserRouter([
         path: 'instructor/dashboard',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorDashboardPage />
+            <TitledRoute title="Instructor Dashboard">
+              <InstructorDashboardPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -277,7 +439,9 @@ export const router = createBrowserRouter([
         path: 'instructor/courses',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorCoursesPage />
+            <TitledRoute title="My Taught Courses">
+              <InstructorCoursesPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -285,7 +449,9 @@ export const router = createBrowserRouter([
         path: 'instructor/courses/new',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorCreateCoursePage />
+            <TitledRoute title="Course Builder">
+              <InstructorCreateCoursePage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -293,7 +459,9 @@ export const router = createBrowserRouter([
         path: 'instructor/question-bank',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorQuestionBankPage />
+            <TitledRoute title="Question Bank">
+              <InstructorQuestionBankPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -301,7 +469,9 @@ export const router = createBrowserRouter([
         path: 'instructor/exam-settings',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorExamSettingsPage />
+            <TitledRoute title="Exam Settings">
+              <InstructorExamSettingsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -309,7 +479,9 @@ export const router = createBrowserRouter([
         path: 'instructor/students',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorStudentsPage />
+            <TitledRoute title="Enrolled Students">
+              <InstructorStudentsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -317,7 +489,9 @@ export const router = createBrowserRouter([
         path: 'instructor/comments',
         element: (
           <RoleGuard allowedRoles={['instructor']}>
-            <InstructorCommentsPage />
+            <TitledRoute title="Comments Inbox">
+              <InstructorCommentsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -327,7 +501,9 @@ export const router = createBrowserRouter([
         path: 'admin/dashboard',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminDashboardPage />
+            <TitledRoute title="Admin Dashboard">
+              <AdminDashboardPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -335,7 +511,9 @@ export const router = createBrowserRouter([
         path: 'admin/users',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminUsersPage />
+            <TitledRoute title="User Management">
+              <AdminUsersPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -343,7 +521,9 @@ export const router = createBrowserRouter([
         path: 'admin/courses',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminCoursesPage />
+            <TitledRoute title="Course Oversight">
+              <AdminCoursesPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -351,7 +531,9 @@ export const router = createBrowserRouter([
         path: 'admin/categories',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminCategoriesPage />
+            <TitledRoute title="Categories Management">
+              <AdminCategoriesPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -359,7 +541,9 @@ export const router = createBrowserRouter([
         path: 'admin/certificates',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminCertificatesPage />
+            <TitledRoute title="Issued Certificates">
+              <AdminCertificatesPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -367,7 +551,9 @@ export const router = createBrowserRouter([
         path: 'admin/settings',
         element: (
           <RoleGuard allowedRoles={['admin']}>
-            <AdminSettingsPage />
+            <TitledRoute title="Platform Settings">
+              <AdminSettingsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -377,7 +563,9 @@ export const router = createBrowserRouter([
         path: 'supervisor/dashboard',
         element: (
           <RoleGuard allowedRoles={['supervisor']}>
-            <SupervisorDashboardPage />
+            <TitledRoute title="Supervisor Dashboard">
+              <SupervisorDashboardPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -385,7 +573,9 @@ export const router = createBrowserRouter([
         path: 'supervisor/comments',
         element: (
           <RoleGuard allowedRoles={['supervisor']}>
-            <SupervisorCommentsPage />
+            <TitledRoute title="Comment Moderation">
+              <SupervisorCommentsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -393,7 +583,9 @@ export const router = createBrowserRouter([
         path: 'supervisor/course-review',
         element: (
           <RoleGuard allowedRoles={['supervisor']}>
-            <SupervisorCourseReviewPage />
+            <TitledRoute title="Course Review Queue">
+              <SupervisorCourseReviewPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -401,7 +593,9 @@ export const router = createBrowserRouter([
         path: 'supervisor/reports',
         element: (
           <RoleGuard allowedRoles={['supervisor']}>
-            <SupervisorReportsPage />
+            <TitledRoute title="Flagged Content & Reports">
+              <SupervisorReportsPage />
+            </TitledRoute>
           </RoleGuard>
         ),
       },
@@ -411,7 +605,9 @@ export const router = createBrowserRouter([
         path: '403',
         element: (
           <AdaptiveShell>
-            <Forbidden403Page />
+            <TitledRoute title="Access Denied (403)">
+              <Forbidden403Page />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },
@@ -419,7 +615,9 @@ export const router = createBrowserRouter([
         path: '404',
         element: (
           <AdaptiveShell>
-            <NotFound404Page />
+            <TitledRoute title="Page Not Found (404)">
+              <NotFound404Page />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },
@@ -427,7 +625,9 @@ export const router = createBrowserRouter([
         path: '500',
         element: (
           <AdaptiveShell>
-            <Server500Page />
+            <TitledRoute title="Something Went Wrong (500)">
+              <Server500Page />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },
@@ -435,7 +635,9 @@ export const router = createBrowserRouter([
         path: '*',
         element: (
           <AdaptiveShell>
-            <NotFound404Page />
+            <TitledRoute title="Page Not Found (404)">
+              <NotFound404Page />
+            </TitledRoute>
           </AdaptiveShell>
         ),
       },

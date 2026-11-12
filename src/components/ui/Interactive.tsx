@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import {
   ChevronDown,
   X,
@@ -12,6 +12,7 @@ import { Button, ComponentVisualState } from './Button';
 import { TextInput } from './Inputs';
 import { ToastMessage, ToastVariant } from '../../context/AppContext';
 import { EmptyState } from './DataDisplay';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 export interface TabItem {
   id: string;
@@ -295,34 +296,44 @@ export const Modal: React.FC<{
   children: React.ReactNode;
   footer?: React.ReactNode;
 }> = ({ open, onClose, title, description, children, footer }) => {
+  const titleId = useId();
+  const dialogRef = useDialogA11y(open, onClose);
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#1E1B2E]/50 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-[#1E1B2E]/50 backdrop-blur-xs"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-lg rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-full max-w-lg max-h-[90dvh] flex flex-col rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150 focus:outline-none"
       >
-        <div className="px-6 py-4 border-b border-[#E6E1F5] flex items-start justify-between gap-4">
+        <div className="px-4 sm:px-6 py-4 border-b border-[#E6E1F5] flex items-start justify-between gap-4 shrink-0">
           <div>
-            <h3 className="font-display font-bold text-[24px] text-[#1E1B2E]">{title}</h3>
+            <h3 id={titleId} className="font-display font-bold text-[22px] sm:text-[24px] text-[#1E1B2E]">{title}</h3>
             {description && <p className="text-[14px] text-[#5F5B75] mt-0.5">{description}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-[10px] text-[#5F5B75] hover:text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer"
+            className="min-w-11 min-h-11 -mr-2 -mt-1 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer shrink-0"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 text-[16px] text-[#1E1B2E] max-h-[70vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 text-[16px] text-[#1E1B2E] flex-1 min-h-0 overflow-y-auto">
           {children}
         </div>
         {footer && (
-          <div className="px-6 py-4 bg-[#FAF8FF] border-t border-[#E6E1F5] flex items-center justify-end gap-3">
+          <div className="px-4 sm:px-6 py-4 bg-[#FAF8FF] border-t border-[#E6E1F5] flex flex-wrap items-center justify-end gap-3 shrink-0 sticky bottom-0">
             {footer}
           </div>
         )}
@@ -339,32 +350,37 @@ export const Drawer: React.FC<{
   children: React.ReactNode;
   footer?: React.ReactNode;
 }> = ({ open, onClose, title, side = 'right', children, footer }) => {
+  const titleId = useId();
+  const drawerRef = useDialogA11y(open, onClose);
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex bg-[#1E1B2E]/50 backdrop-blur-xs">
       <div className="flex-1" onClick={onClose} />
       <div
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        className={`w-full max-w-md bg-white h-full shadow-purple-lg border-[#E6E1F5] flex flex-col justify-between ${
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`w-full max-w-md bg-white h-full max-h-[100dvh] shadow-purple-lg border-[#E6E1F5] flex flex-col justify-between focus:outline-none ${
           side === 'left' ? 'order-first border-r' : 'border-l'
         }`}
       >
-        <div className="px-6 py-4 border-b border-[#E6E1F5] flex items-center justify-between">
-          <h3 className="font-display font-bold text-[22px] text-[#1E1B2E]">{title}</h3>
+        <div className="px-4 sm:px-6 py-4 border-b border-[#E6E1F5] flex items-center justify-between shrink-0">
+          <h3 id={titleId} className="font-display font-bold text-[22px] text-[#1E1B2E]">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-[10px] text-[#5F5B75] hover:text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer"
+            className="min-w-11 min-h-11 -mr-2 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer shrink-0"
             aria-label="Close drawer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-6 flex-1 overflow-y-auto">{children}</div>
+        <div className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto">{children}</div>
         {footer && (
-          <div className="px-6 py-4 bg-[#FAF8FF] border-t border-[#E6E1F5] flex items-center justify-end gap-3">
+          <div className="px-4 sm:px-6 py-4 bg-[#FAF8FF] border-t border-[#E6E1F5] flex flex-wrap items-center justify-end gap-3 shrink-0 sticky bottom-0">
             {footer}
           </div>
         )}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router';
+import { handleImageError } from '../../utils/imageFallback';
 
 interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -39,6 +40,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       <img
         src="/eduhub-logo.png"
         alt="EduHub logo"
+        onError={handleImageError}
         className={`${SIZE_CLASSES[size]} object-contain shrink-0 select-none`}
         draggable={false}
       />
@@ -106,6 +108,7 @@ export const CatMascot: React.FC<CatMascotProps> = ({
       <img
         src="/eduhub-logo.png"
         alt="EduHub cat mascot"
+        onError={handleImageError}
         className="w-full h-full object-cover object-[50%_24%] scale-[1.35]"
         draggable={false}
       />

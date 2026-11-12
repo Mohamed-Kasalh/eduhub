@@ -40,6 +40,7 @@ import {
 import { CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { TOP_INSTRUCTORS, STUDENT_TESTIMONIALS, Course } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
 export { CoursesCatalogPage } from './CoursesCatalogPage';
 export { CourseDetailPage } from './CourseDetailPage';
 export { VerifyCertificatePage } from '../student/CertificatePages';
@@ -138,7 +139,8 @@ export const HomePage: React.FC = () => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search for React, Python, UI/UX design, or cybersecurity..."
-                    className="w-full h-11 pl-11 pr-4 rounded-[10px] text-[16px] text-[#1E1B2E] placeholder:text-[#5F5B75]/65 focus:outline-none"
+                    aria-label="Search courses, skills, or topics"
+                    className="w-full h-11 pl-11 pr-4 rounded-[10px] text-[16px] text-[#1E1B2E] placeholder:text-[#5F5B75] focus:outline-none"
                   />
                 </div>
                 <Button type="submit" variant="primary" size="md">
@@ -232,6 +234,7 @@ export const HomePage: React.FC = () => {
                 <img
                   src={courses[0].thumbnail}
                   alt="Complete React Developer Course lesson"
+                  onError={handleImageError}
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-[#1E1B2E]/35 flex items-center justify-center">

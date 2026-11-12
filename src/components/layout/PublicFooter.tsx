@@ -53,7 +53,7 @@ export const PublicFooter: React.FC = () => {
                     })
                   }
                   aria-label={s.label}
-                  className="w-9 h-9 rounded-[10px] bg-white border border-[#E6E1F5] text-[#5F5B75] hover:text-[#6D4AE0] hover:border-[#A78BFA] shadow-purple-sm flex items-center justify-center transition-all cursor-pointer"
+                  className="w-11 h-11 rounded-[10px] bg-white border border-[#E6E1F5] text-[#5F5B75] hover:text-[#6D4AE0] hover:border-[#A78BFA] shadow-purple-sm flex items-center justify-center transition-all cursor-pointer"
                 >
                   {s.icon}
                 </button>
@@ -154,6 +154,7 @@ export const PublicFooter: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                aria-label="Email address for weekly digest"
                 errorText={error}
               />
               <Button

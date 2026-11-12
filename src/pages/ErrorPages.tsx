@@ -14,10 +14,12 @@ import { Button, StatusChip } from '../components/ui';
 import { CatMascot } from '../components/brand/BrandLogo';
 import { useApp } from '../context/AppContext';
 import { UserRole } from '../data/mockData';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export const Forbidden403Page: React.FC<{
   requiredRoles?: UserRole[];
 }> = ({ requiredRoles }) => {
+  usePageTitle('Access Denied (403)');
   const { role, setRole, currentUser, getDashboardPath } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
@@ -93,6 +95,7 @@ export const Forbidden403Page: React.FC<{
  * (One of the 3 allowed places for the cat mascot: empty states, success screens, and 404)
  */
 export const NotFound404Page: React.FC = () => {
+  usePageTitle('Page Not Found (404)');
   const { getDashboardPath } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
@@ -152,6 +155,7 @@ export const Server500Page: React.FC<{
   onRetry?: () => void;
   errorMessage?: string;
 }> = ({ onRetry, errorMessage }) => {
+  usePageTitle('Something Went Wrong (500)');
   const handleRetry = () => {
     if (onRetry) {
       onRetry();

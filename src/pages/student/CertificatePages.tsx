@@ -30,6 +30,8 @@ import {
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { CertificateRecord } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
+import { usePageTitle } from '../../hooks/usePageTitle';
 
 /**
  * Crisp SVG QR Code component for the certificate verification link
@@ -136,6 +138,7 @@ export const CertificateDetailPage: React.FC = () => {
     () => courses.find((c) => c.id === cert.courseId) || courses[0],
     [courses, cert.courseId]
   );
+  usePageTitle(`Certificate • ${course.title}`);
 
   const stats = getCourseProgressStats(course.id);
   const bestScore = examBestScores[course.id] ?? cert.scorePercent;
@@ -817,6 +820,7 @@ export const CertificatesListPage: React.FC = () => {
                       <img
                         src="/eduhub-logo.png"
                         alt="EduHub logo"
+                        onError={handleImageError}
                         className="w-7 h-7 object-contain"
                       />
                     </div>

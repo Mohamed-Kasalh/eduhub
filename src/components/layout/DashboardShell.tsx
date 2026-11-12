@@ -29,6 +29,7 @@ import { BrandLogo } from '../brand/BrandLogo';
 import { Avatar, SearchInput, StatusChip } from '../ui';
 import { useApp } from '../../context/AppContext';
 import { NotificationItem, UserRole } from '../../data/mockData';
+import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 function getNotificationIcon(type: NotificationItem['type']) {
   switch (type) {
@@ -157,6 +158,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   } = useApp();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const mobileDrawerRef = useDialogA11y(mobileDrawerOpen, () => setMobileDrawerOpen(false));
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
   const [notifTab, setNotifTab] = useState<'all' | 'unread'>('all');
@@ -297,7 +299,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
             <button
               type="button"
               onClick={() => setCollapsed(true)}
-              className="p-1.5 rounded-[8px] text-[#5F5B75] hover:text-[#6D4AE0] hover:bg-[#F3EFFF] cursor-pointer"
+              className="w-11 h-11 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:text-[#6D4AE0] hover:bg-[#F3EFFF] cursor-pointer"
               aria-label="Collapse sidebar"
               title="Collapse sidebar"
             >
@@ -311,7 +313,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
             <button
               type="button"
               onClick={() => setCollapsed(false)}
-              className="p-1.5 rounded-[8px] text-[#5F5B75] hover:text-[#6D4AE0] hover:bg-[#F3EFFF] cursor-pointer"
+              className="w-11 h-11 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:text-[#6D4AE0] hover:bg-[#F3EFFF] cursor-pointer"
               aria-label="Expand sidebar"
               title="Expand sidebar"
             >
@@ -358,13 +360,20 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
       {/* Mobile Slide-in Drawer Sidebar */}
       {mobileDrawerOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex bg-[#1E1B2E]/50 backdrop-blur-xs">
-          <aside className="w-72 max-w-[85vw] bg-white h-full border-r border-[#E6E1F5] shadow-purple-lg flex flex-col">
+          <aside
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Workspace navigation"
+            tabIndex={-1}
+            className="w-72 max-w-[85vw] bg-white h-full border-r border-[#E6E1F5] shadow-purple-lg flex flex-col focus:outline-none"
+          >
             <div className="h-20 px-4 border-b border-[#E6E1F5] flex items-center justify-between">
               <BrandLogo size="sm" showText />
               <button
                 type="button"
                 onClick={() => setMobileDrawerOpen(false)}
-                className="p-2 rounded-[10px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
+                className="w-11 h-11 flex items-center justify-center rounded-[10px] text-[#5F5B75] hover:bg-[#F3EFFF] cursor-pointer"
                 aria-label="Close sidebar drawer"
               >
                 <X className="w-5 h-5" />
@@ -384,8 +393,9 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
             <button
               type="button"
               onClick={() => setMobileDrawerOpen(true)}
-              className="lg:hidden p-2.5 rounded-[10px] border border-[#E6E1F5] text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer"
+              className="lg:hidden w-11 h-11 flex items-center justify-center rounded-[10px] border border-[#E6E1F5] text-[#1E1B2E] hover:bg-[#F3EFFF] cursor-pointer shrink-0"
               aria-label="Open navigation drawer"
+              aria-expanded={mobileDrawerOpen}
             >
               <Menu className="w-5 h-5" />
             </button>

@@ -39,6 +39,8 @@ import {
 } from '../../components/ui';
 import { CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
+import { handleImageError } from '../../utils/imageFallback';
+import { usePageTitle } from '../../hooks/usePageTitle';
 import {
   COURSE_CURRICULUM_SECTIONS,
   COURSE_FILTER_META,
@@ -86,6 +88,8 @@ export const CourseDetailPage: React.FC = () => {
     () => courses.find((c) => c.id === id) || courses[0],
     [courses, id]
   );
+
+  usePageTitle(course.title);
 
   const meta = COURSE_FILTER_META[course.id] || COURSE_FILTER_META['course-1'];
   const isWishlisted = wishlistIds.includes(course.id);
@@ -931,6 +935,7 @@ export const CourseDetailPage: React.FC = () => {
               <img
                 src={course.thumbnail}
                 alt={course.title}
+                onError={handleImageError}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-90"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-[#1E1B2E]/80 via-[#1E1B2E]/35 to-transparent flex flex-col items-center justify-center gap-2">
@@ -1312,6 +1317,7 @@ export const CourseDetailPage: React.FC = () => {
             <img
               src={course.thumbnail}
               alt={activeDemoLesson.title}
+              onError={handleImageError}
               className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
             <div className="relative z-10 flex items-center justify-between">
@@ -1406,6 +1412,7 @@ export const CourseDetailPage: React.FC = () => {
             <img
               src={course.thumbnail}
               alt={course.title}
+              onError={handleImageError}
               className="w-20 h-16 rounded-[8px] object-cover shrink-0 border border-[#E6E1F5]"
             />
             <div className="min-w-0">

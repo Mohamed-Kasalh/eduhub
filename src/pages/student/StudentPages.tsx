@@ -34,6 +34,8 @@ import {
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { ACHIEVEMENT_BADGES, ROLE_USERS, Course } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
+import { usePageTitle } from '../../hooks/usePageTitle';
 import {
   WEEKLY_LEARNING_ACTIVITY,
   COURSE_LAST_ACCESSED,
@@ -196,6 +198,7 @@ export const StudentDashboardPage: React.FC = () => {
               <img
                 src={primaryCourse.thumbnail}
                 alt={primaryCourse.title}
+                onError={handleImageError}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
               <div className="absolute inset-0 bg-[#1E1B2E]/35 flex items-center justify-center">
@@ -295,6 +298,7 @@ export const StudentDashboardPage: React.FC = () => {
                     <img
                       src={c.thumbnail}
                       alt={c.title}
+                      onError={handleImageError}
                       className="w-full h-full object-cover"
                     />
                     <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-full bg-white/95 text-[#6D4AE0] text-[11px] font-bold">
@@ -720,7 +724,8 @@ export const StudentCoursesPage: React.FC = () => {
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search my courses..."
-              className="w-full h-10 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[14px] text-[#1E1B2E] focus:outline-none focus:border-[#6D4AE0]"
+              aria-label="Search my courses"
+              className="w-full h-11 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[14px] text-[#1E1B2E] focus:outline-none focus:border-[#6D4AE0]"
             />
           </div>
 
@@ -728,7 +733,7 @@ export const StudentCoursesPage: React.FC = () => {
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
             aria-label="Sort my courses"
-            className="h-10 pl-3 pr-8 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[14px] font-semibold text-[#1E1B2E] focus:outline-none focus:border-[#6D4AE0] cursor-pointer"
+            className="h-11 pl-3 pr-8 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[14px] font-semibold text-[#1E1B2E] focus:outline-none focus:border-[#6D4AE0] cursor-pointer"
           >
             <option value="recent">Sort: Recently accessed</option>
             <option value="progress-desc">Progress: High to low</option>
@@ -785,6 +790,7 @@ export const StudentCoursesPage: React.FC = () => {
                     <img
                       src={course.thumbnail}
                       alt={course.title}
+                      onError={handleImageError}
                       className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                     />
                   </Link>
@@ -928,6 +934,7 @@ export const StudentCourseProgressPage: React.FC = () => {
   } = useApp();
 
   const course = courses.find((c) => c.id === courseId) || courses[0];
+  usePageTitle(`${course.title} Progress`);
   const stats = getCourseProgressStats(course.id);
   const meta = COURSE_LAST_ACCESSED[course.id] || COURSE_LAST_ACCESSED['course-1'];
   const bestExamScore = examBestScores[course.id] ?? null;

@@ -36,13 +36,13 @@ export const StatusChip: React.FC<StatusChipProps> = ({
   const isFocused = forceState === 'focus';
 
   const palette: Record<ChipVariant, string> = {
-    primary: 'bg-[#F3EFFF] text-[#6D4AE0] border-[#E6E1F5]',
-    success: 'bg-[#16A34A]/10 text-[#16A34A] border-[#16A34A]/25',
-    warning: 'bg-[#F59E0B]/12 text-[#B45309] border-[#F59E0B]/30',
-    danger: 'bg-[#DC2626]/10 text-[#DC2626] border-[#DC2626]/25',
-    info: 'bg-[#2563EB]/10 text-[#2563EB] border-[#2563EB]/25',
+    primary: 'bg-[#F3EFFF] text-[#5A3AC7] border-[#E6E1F5]',
+    success: 'bg-[#16A34A]/10 text-[#166534] border-[#16A34A]/25',
+    warning: 'bg-[#F59E0B]/12 text-[#92400E] border-[#F59E0B]/30',
+    danger: 'bg-[#DC2626]/10 text-[#B91C1C] border-[#DC2626]/25',
+    info: 'bg-[#2563EB]/10 text-[#1D4ED8] border-[#2563EB]/25',
     neutral: 'bg-white text-[#5F5B75] border-[#E6E1F5]',
-    orange: 'bg-[#F59E3B]/15 text-[#B45309] border-[#F59E3B]/35',
+    orange: 'bg-[#F59E3B]/15 text-[#9A3412] border-[#F59E3B]/35',
     gold: 'bg-[#F5B82E]/20 text-[#92400E] border-[#F5B82E]/40',
   };
 

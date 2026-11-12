@@ -30,6 +30,7 @@ import {
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
 import { CourseWorkflowBanner } from '../admin/AdminPages';
 import {
   INITIAL_SUPERVISOR_COMMENTS,
@@ -526,6 +527,7 @@ export const SupervisorCommentsPage: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          aria-label={`Select comment by ${cm.authorName}`}
                           onClick={(e) => e.stopPropagation()}
                           onChange={() =>
                             setCheckedIds((prev) =>
@@ -901,6 +903,7 @@ export const SupervisorCourseReviewPage: React.FC = () => {
                         <img
                           src={sub.thumbnail}
                           alt={sub.title}
+                          onError={handleImageError}
                           className="w-12 h-9 rounded-[6px] object-cover shrink-0 border border-[#E6E1F5]"
                         />
                         <div>
@@ -958,6 +961,7 @@ export const SupervisorCourseReviewPage: React.FC = () => {
           <img
             src={activeSub.thumbnail}
             alt={activeSub.title}
+            onError={handleImageError}
             className="w-full h-48 object-cover"
           />
           <div className="p-6 space-y-4">
@@ -1098,10 +1102,11 @@ export const SupervisorCourseReviewPage: React.FC = () => {
 
           {/* Supervisor Notes / Required Rejection Reason Box */}
           <div className="space-y-1.5">
-            <label className="block text-[14px] font-bold text-[#1E1B2E]">
+            <label htmlFor="supervisor-review-notes" className="block text-[14px] font-bold text-[#1E1B2E]">
               Supervisor review notes / rejection reason (required for Request changes or Reject)
             </label>
             <textarea
+              id="supervisor-review-notes"
               rows={3}
               value={reviewNotes}
               onChange={(e) => {

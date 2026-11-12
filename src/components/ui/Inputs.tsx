@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import {
   Eye,
   EyeOff,
@@ -30,7 +30,7 @@ function getControlSurfaceClasses(
   isDisabled?: boolean
 ) {
   const base =
-    'w-full rounded-[10px] bg-white text-[#1E1B2E] placeholder:text-[#5F5B75]/65 text-[16px] transition-all duration-150 border';
+    'w-full rounded-[10px] bg-white text-[#1E1B2E] placeholder:text-[#5F5B75] text-[16px] transition-all duration-150 border';
 
   if (isDisabled || forceState === 'disabled') {
     return `${base} bg-[#F3EFFF]/50 text-[#5F5B75] border-[#E6E1F5] opacity-65 cursor-not-allowed`;
@@ -72,6 +72,8 @@ export const TextInput: React.FC<TextInputProps> = ({
   id,
   ...rest
 }) => {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
   const hasError = Boolean(errorText) || forceState === 'error';
@@ -84,7 +86,7 @@ export const TextInput: React.FC<TextInputProps> = ({
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       {label && (
-        <label htmlFor={id} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
+        <label htmlFor={inputId} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
           <span>{label}</span>
           {required && <span className="text-[#DC2626]">*</span>}
         </label>
@@ -94,8 +96,9 @@ export const TextInput: React.FC<TextInputProps> = ({
           <span className="absolute left-3.5 text-[#5F5B75] pointer-events-none">{leftIcon}</span>
         )}
         <input
-          id={id}
+          id={inputId}
           disabled={isDisabled}
+          aria-invalid={hasError ? true : undefined}
           className={`${getControlSurfaceClasses(forceState, hasError, isDisabled)} h-11 ${
             leftIcon ? 'pl-10' : 'pl-3.5'
           } ${rightSlot || isLoading || hasError ? 'pr-10' : 'pr-3.5'}`}
@@ -147,7 +150,7 @@ export const PasswordInput: React.FC<Omit<TextInputProps, 'type'>> = ({
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
-          className="text-[#5F5B75] hover:text-[#6D4AE0] focus:outline-none p-1 rounded-md cursor-pointer"
+          className="text-[#5F5B75] hover:text-[#6D4AE0] w-11 h-11 -mr-3.5 flex items-center justify-center rounded-[10px] cursor-pointer"
           aria-label={visible ? 'Hide password' : 'Show password'}
         >
           {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -182,6 +185,8 @@ export const SelectInput: React.FC<SelectInputProps> = ({
   id,
   ...rest
 }) => {
+  const generatedId = useId();
+  const selectId = id ?? generatedId;
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
   const hasError = Boolean(errorText) || forceState === 'error';
@@ -192,15 +197,16 @@ export const SelectInput: React.FC<SelectInputProps> = ({
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
       {label && (
-        <label htmlFor={id} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
+        <label htmlFor={selectId} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
           <span>{label}</span>
           {required && <span className="text-[#DC2626]">*</span>}
         </label>
       )}
       <div className="relative flex items-center">
         <select
-          id={id}
+          id={selectId}
           disabled={isDisabled}
+          aria-invalid={hasError ? true : undefined}
           className={`${getControlSurfaceClasses(
             forceState,
             hasError,
@@ -251,8 +257,12 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   disabled = false,
   forceState,
   className = '',
+  id,
+  'aria-label': ariaLabel,
   ...rest
 }) => {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
   const hasError = Boolean(errorText) || forceState === 'error';
@@ -264,13 +274,16 @@ export const SearchInput: React.FC<SearchInputProps> = ({
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      {label && <label className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
+      {label && <label htmlFor={inputId} className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
       <div className="relative flex items-center">
         <Search className="w-4 h-4 text-[#5F5B75] absolute left-3.5 pointer-events-none" />
         <input
+          id={inputId}
           type="text"
           value={value}
           disabled={isDisabled}
+          aria-label={ariaLabel ?? label ?? placeholder ?? 'Search'}
+          aria-invalid={hasError ? true : undefined}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && onSubmitSearch) {
@@ -288,7 +301,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
             <button
               type="button"
               onClick={() => onChange('')}
-              className="p-1 text-[#5F5B75] hover:text-[#1E1B2E] rounded-full hover:bg-[#F3EFFF] cursor-pointer"
+              className="w-11 h-11 -mr-3 flex items-center justify-center text-[#5F5B75] hover:text-[#1E1B2E] rounded-full hover:bg-[#F3EFFF] cursor-pointer"
               aria-label="Clear search"
             >
               <X className="w-3.5 h-3.5" />
@@ -325,6 +338,8 @@ export const TextareaInput: React.FC<TextareaInputProps> = ({
   id,
   ...rest
 }) => {
+  const generatedId = useId();
+  const textareaId = id ?? generatedId;
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
   const hasError = Boolean(errorText) || forceState === 'error';
@@ -340,7 +355,7 @@ export const TextareaInput: React.FC<TextareaInputProps> = ({
     <div className={`flex flex-col gap-1.5 ${className}`}>
       <div className="flex items-center justify-between">
         {label && (
-          <label htmlFor={id} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
+          <label htmlFor={textareaId} className="text-[14px] font-semibold text-[#1E1B2E] flex items-center gap-1">
             <span>{label}</span>
             {required && <span className="text-[#DC2626]">*</span>}
           </label>
@@ -353,9 +368,10 @@ export const TextareaInput: React.FC<TextareaInputProps> = ({
       </div>
       <div className="relative">
         <textarea
-          id={id}
+          id={textareaId}
           value={value}
           disabled={isDisabled}
+          aria-invalid={hasError ? true : undefined}
           rows={4}
           className={`${getControlSurfaceClasses(forceState, hasError, isDisabled)} p-3.5 resize-y`}
           {...rest}
@@ -395,6 +411,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({
   forceState,
   className = '',
 }) => {
+  const groupId = useId();
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const isLoading = loading || forceState === 'loading';
   const isDisabled = disabled || forceState === 'disabled' || isLoading;
@@ -454,11 +471,12 @@ export const OtpInput: React.FC<OtpInputProps> = ({
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
-      {label && <label className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
+      {label && <label htmlFor={`${groupId}-0`} className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
       <div className={`flex items-center gap-2 sm:gap-3 ${shake ? 'animate-shake' : ''}`}>
         {Array.from({ length }).map((_, idx) => (
           <input
             key={idx}
+            id={`${groupId}-${idx}`}
             ref={(el) => {
               refs.current[idx] = el;
             }}
@@ -470,7 +488,7 @@ export const OtpInput: React.FC<OtpInputProps> = ({
             onChange={(e) => handleDigitChange(idx, e.target.value)}
             onKeyDown={(e) => handleKeyDown(idx, e)}
             onPaste={handlePaste}
-            aria-label={`Digit ${idx + 1}`}
+            aria-label={`${label} digit ${idx + 1} of ${length}`}
             className={`${getControlSurfaceClasses(
               forceState && idx === 0 ? forceState : hasError ? 'error' : undefined,
               hasError,
@@ -518,6 +536,7 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
   onRetry,
   className = '',
 }) => {
+  const fileInputId = useId();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -547,9 +566,10 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`}>
-      {label && <label className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
+      {label && <label htmlFor={fileInputId} className="text-[14px] font-semibold text-[#1E1B2E]">{label}</label>}
       <div
         role="button"
+        aria-label={label || 'Upload file'}
         tabIndex={isDisabled ? -1 : 0}
         onClick={() => !isDisabled && inputRef.current?.click()}
         onKeyDown={(e) => {
@@ -581,6 +601,7 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
         }`}
       >
         <input
+          id={fileInputId}
           ref={inputRef}
           type="file"
           accept={accept}
@@ -642,7 +663,7 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
                 onRetry();
                 inputRef.current?.click();
               }}
-              className="text-[12px] font-bold text-[#6D4AE0] hover:underline cursor-pointer"
+              className="text-[12px] font-bold text-[#6D4AE0] hover:underline cursor-pointer min-h-[36px] px-2"
             >
               Retry
             </button>

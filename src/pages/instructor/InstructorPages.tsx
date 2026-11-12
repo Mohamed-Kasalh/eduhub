@@ -35,6 +35,7 @@ import {
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
 import {
   ENROLLMENTS_30_DAYS,
   INITIAL_INSTRUCTOR_COURSES,
@@ -374,7 +375,8 @@ export const InstructorDashboardPage: React.FC = () => {
                       setQuickReplies((prev) => ({ ...prev, [th.id]: e.target.value }))
                     }
                     placeholder="Write a quick reply..."
-                    className="flex-1 h-8 px-2.5 rounded-[8px] bg-white border border-[#E6E1F5] text-[12px] focus:outline-none focus:border-[#6D4AE0]"
+                    aria-label={`Quick reply to ${th.studentName}`}
+                    className="flex-1 h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
                   />
                   <Button
                     size="sm"
@@ -441,6 +443,7 @@ export const InstructorDashboardPage: React.FC = () => {
                       <img
                         src={c.thumbnail}
                         alt={c.title}
+                        onError={handleImageError}
                         className="w-12 h-9 rounded-[6px] object-cover shrink-0 border border-[#E6E1F5]"
                       />
                       <div>
@@ -634,7 +637,8 @@ export const InstructorCoursesPage: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search courses..."
-              className="w-full h-10 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
+              aria-label="Search instructor courses"
+              className="w-full h-11 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
             />
           </div>
 
@@ -642,7 +646,7 @@ export const InstructorCoursesPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-[8px] cursor-pointer ${
+              className={`w-10 h-10 flex items-center justify-center rounded-[8px] cursor-pointer ${
                 viewMode === 'table'
                   ? 'bg-[#6D4AE0] text-white'
                   : 'text-[#5F5B75] hover:text-[#1E1B2E]'
@@ -654,7 +658,7 @@ export const InstructorCoursesPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-[8px] cursor-pointer ${
+              className={`w-10 h-10 flex items-center justify-center rounded-[8px] cursor-pointer ${
                 viewMode === 'grid'
                   ? 'bg-[#6D4AE0] text-white'
                   : 'text-[#5F5B75] hover:text-[#1E1B2E]'
@@ -698,6 +702,7 @@ export const InstructorCoursesPage: React.FC = () => {
                           <img
                             src={c.thumbnail}
                             alt={c.title}
+                            onError={handleImageError}
                             className="w-14 h-10 rounded-[8px] object-cover shrink-0 border border-[#E6E1F5]"
                           />
                           <div>
@@ -755,8 +760,9 @@ export const InstructorCoursesPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setCourseToDelete(c)}
-                            className="p-2 rounded-[8px] text-[#5F5B75] hover:text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
+                            className="w-11 h-11 inline-flex items-center justify-center rounded-[8px] text-[#5F5B75] hover:text-[#DC2626] hover:bg-[#FEF2F2] cursor-pointer"
                             title="Delete course"
+                            aria-label={`Delete ${c.title}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -799,6 +805,7 @@ export const InstructorCoursesPage: React.FC = () => {
                 <img
                   src={c.thumbnail}
                   alt={c.title}
+                  onError={handleImageError}
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute top-3 left-3">
@@ -934,7 +941,8 @@ export const InstructorStudentsPage: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by student name or email..."
-            className="w-full h-10 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
+            aria-label="Search enrolled students"
+            className="w-full h-11 pl-9 pr-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] focus:outline-none focus:border-[#6D4AE0]"
           />
         </div>
 
@@ -943,7 +951,8 @@ export const InstructorStudentsPage: React.FC = () => {
           <select
             value={selectedCourseId}
             onChange={(e) => setSelectedCourseId(e.target.value)}
-            className="h-10 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
+            aria-label="Filter enrolled students by course"
+            className="h-11 px-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] text-[13px] font-bold text-[#1E1B2E]"
           >
             <option value="all">All taught courses</option>
             <option value="course-1">Complete React Developer Course</option>
@@ -1413,7 +1422,8 @@ export const InstructorCommentsPage: React.FC = () => {
                       }
                     }}
                     placeholder={`Write an instructor reply to ${th.studentName}...`}
-                    className="flex-1 h-10 px-3.5 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] focus:bg-white focus:border-[#6D4AE0] focus:outline-none text-[13px] text-[#1E1B2E]"
+                    aria-label={`Write an instructor reply to ${th.studentName}`}
+                    className="flex-1 h-11 px-3.5 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] focus:bg-white focus:border-[#6D4AE0] focus:outline-none text-[13px] text-[#1E1B2E]"
                   />
                   <Button
                     size="md"

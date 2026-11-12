@@ -37,6 +37,7 @@ import {
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { ROLE_USERS, Course } from '../../data/mockData';
+import { handleImageError } from '../../utils/imageFallback';
 
 type UploadVisualState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -667,10 +668,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
               </div>
 
               <div className="md:col-span-2 space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-subtitle" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Subtitle
                 </label>
                 <input
+                  id="wizard-subtitle"
                   type="text"
                   value={subtitle}
                   onChange={(e) => {
@@ -683,10 +685,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-category" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Category
                 </label>
                 <select
+                  id="wizard-category"
                   value={categoryId}
                   onChange={(e) => {
                     setCategoryId(e.target.value);
@@ -704,10 +707,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                  <label htmlFor="wizard-level" className="block text-[14px] font-bold text-[#1E1B2E]">
                     Level
                   </label>
                   <select
+                    id="wizard-level"
                     value={level}
                     onChange={(e) => {
                       setLevel(e.target.value as Course['level']);
@@ -722,10 +726,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                  <label htmlFor="wizard-language" className="block text-[14px] font-bold text-[#1E1B2E]">
                     Language
                   </label>
                   <select
+                    id="wizard-language"
                     value={language}
                     onChange={(e) => {
                       setLanguage(e.target.value);
@@ -786,6 +791,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                     <input
                       type="text"
                       value={tagInput}
+                      aria-label="Add search tag"
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && tagInput.trim()) {
@@ -948,6 +954,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                       <img
                         src={coverPreviewUrl}
                         alt="16:9 Course cover preview"
+                        onError={handleImageError}
                         className="w-full h-full object-cover transition-transform"
                         style={{ transform: `scale(${coverCropZoom / 100})` }}
                       />
@@ -973,6 +980,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                           min={100}
                           max={135}
                           value={coverCropZoom}
+                          aria-label="Course cover crop zoom"
                           onChange={(e) => setCoverCropZoom(Number(e.target.value))}
                           className="w-24 accent-[#6D4AE0] cursor-pointer"
                         />
@@ -1131,6 +1139,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                       <img
                         src={coverPreviewUrl}
                         alt="Demo video preview"
+                        onError={handleImageError}
                         className="absolute inset-0 w-full h-full object-cover opacity-40"
                       />
                       <div className="relative z-10 text-center space-y-1.5">
@@ -1421,27 +1430,29 @@ export const InstructorCreateCoursePage: React.FC = () => {
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
+                              <label htmlFor={`new-lesson-title-${section.id}`} className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
                                 Lesson title *
                               </label>
                               <input
+                                id={`new-lesson-title-${section.id}`}
                                 type="text"
                                 value={newLessonTitle}
                                 onChange={(e) => setNewLessonTitle(e.target.value)}
                                 placeholder="e.g. 6. Server Actions & Form Validation"
-                                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
                               />
                             </div>
                             <div>
-                              <label className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
+                              <label htmlFor={`new-lesson-video-${section.id}`} className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
                                 Video upload (MP4 up to 2GB) & auto-detected minutes
                               </label>
                               <div className="flex items-center gap-2">
                                 <input
+                                  id={`new-lesson-video-${section.id}`}
                                   type="text"
                                   value={newLessonVideo}
                                   onChange={(e) => setNewLessonVideo(e.target.value)}
-                                  className="flex-1 h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                                  className="flex-1 h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
                                 />
                                 <input
                                   type="number"
@@ -1449,22 +1460,24 @@ export const InstructorCreateCoursePage: React.FC = () => {
                                   max={180}
                                   value={newLessonMinutes}
                                   onChange={(e) => setNewLessonMinutes(e.target.value)}
-                                  className="w-20 h-10 px-2.5 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px] font-bold text-[#6D4AE0]"
+                                  className="w-20 h-11 px-2.5 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px] font-bold text-[#6D4AE0]"
                                   title="Video duration in minutes"
+                                  aria-label="Video duration in minutes"
                                 />
                                 <span className="text-[12px] text-[#5F5B75]">min</span>
                               </div>
                             </div>
                             <div>
-                              <label className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
+                              <label htmlFor={`new-lesson-attachment-${section.id}`} className="block text-[12px] font-bold text-[#1E1B2E] mb-1">
                                 Downloadable attachment (PDF / ZIP)
                               </label>
                               <input
+                                id={`new-lesson-attachment-${section.id}`}
                                 type="text"
                                 value={newLessonAttachment}
                                 onChange={(e) => setNewLessonAttachment(e.target.value)}
                                 placeholder="e.g. Starter-Code-Lab.zip"
-                                className="w-full h-10 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
+                                className="w-full h-11 px-3 rounded-[8px] bg-white border border-[#E6E1F5] text-[13px]"
                               />
                             </div>
                             <div className="flex items-end pb-2">
@@ -1510,7 +1523,8 @@ export const InstructorCreateCoursePage: React.FC = () => {
                 value={newSectionTitle}
                 onChange={(e) => setNewSectionTitle(e.target.value)}
                 placeholder="New section title (e.g. Section 4: Capstone Project & CI/CD)..."
-                className="flex-1 h-10 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[14px] focus:outline-none focus:border-[#6D4AE0]"
+                aria-label="New section title"
+                className="flex-1 h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[14px] focus:outline-none focus:border-[#6D4AE0]"
               />
               <Button
                 variant="secondary"
@@ -1628,6 +1642,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
                       step="0.01"
                       value={originalPriceAmount}
                       onChange={(e) => setOriginalPriceAmount(e.target.value)}
+                      aria-label="Original promotional price"
                       className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[15px] text-[#5F5B75]"
                       placeholder="Original price (e.g. 89.99)"
                     />
@@ -1672,10 +1687,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-3xl">
               <div className="space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-qbank-source" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Question Bank source
                 </label>
                 <select
+                  id="wizard-qbank-source"
                   value={linkedQuestionBankCourseId}
                   onChange={(e) => setLinkedQuestionBankCourseId(e.target.value)}
                   className="w-full h-11 px-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[14px] font-semibold text-[#1E1B2E]"
@@ -1686,10 +1702,11 @@ export const InstructorCreateCoursePage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-exam-qcount" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Questions per attempt
                 </label>
                 <input
+                  id="wizard-exam-qcount"
                   type="number"
                   min={5}
                   max={50}
@@ -1700,11 +1717,12 @@ export const InstructorCreateCoursePage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-[14px] font-bold text-[#1E1B2E]">
+                <label htmlFor="wizard-exam-pass-score" className="block text-[14px] font-bold text-[#1E1B2E]">
                   Minimum pass score (%)
                 </label>
                 <div className="flex items-center gap-3">
                   <input
+                    id="wizard-exam-pass-score"
                     type="range"
                     min={50}
                     max={90}

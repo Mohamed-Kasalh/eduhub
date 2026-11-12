@@ -179,7 +179,7 @@ export const LoginPage: React.FC = () => {
     }
 
     if (!password) {
-      setPasswordError('Password is required to sign in to your account.');
+      setPasswordError('Password is required to log in to your account.');
       valid = false;
     } else if (password.length < 6) {
       setPasswordError('Password must be at least 6 characters long.');
