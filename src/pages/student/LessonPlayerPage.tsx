@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router';
 import {
   Play,
@@ -14,7 +14,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  FileText,
   Download,
   ThumbsUp,
   MessageSquare,
@@ -24,12 +23,10 @@ import {
   Trash2,
   ShieldCheck,
   Clock,
-  Award,
   FileCheck2,
   Sparkles,
   PanelRightOpen,
   X,
-  RotateCcw,
 } from 'lucide-react';
 import {
   Button,
@@ -39,98 +36,89 @@ import {
   Avatar,
   EmptyState,
   ConfirmDialog,
+  Skeleton,
+  QueryErrorState,
 } from '../../components/ui';
 import { BrandLogo } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { UserProfile } from '../../data/mockData';
+import { isApiError, isForbiddenError, isNotFoundError } from '../../api/errors';
+import {
+  useCompleteLessonMutation,
+  useCourseProgress,
+  useLessonDetail,
+  useSaveLessonProgressMutation,
+  useUncompleteLessonMutation,
+} from '../../api/hooks/useLearning';
+import {
+  useCreateCommentMutation,
+  useDeleteCommentMutation,
+  useLessonComments,
+  useReplyCommentMutation,
+  useReportCommentMutation,
+  useToggleLikeCommentMutation,
+  useToggleLikeReplyMutation,
+  useUpdateCommentMutation,
+} from '../../api/hooks/useComments';
+import {
+  LESSON_REPORT_OPTIONS,
+  type MappedLessonComment,
+  type MappedPlayerLesson,
+} from '../../api/mappers';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
+import { formatDuration } from '../../lib/format';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import {
-  STUDENT_COURSE_SECTIONS,
-  ALL_STUDENT_LESSONS,
-  LESSON_RESOURCES,
-  StudentLessonItem,
-  ThreadedLessonComment,
-} from '../../data/studentLearningData';
+import { Forbidden403Page, NotFound404Page } from '../ErrorPages';
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const VIDEO_QUALITIES = ['1080p HD', '720p', '480p'];
 
-function formatSeconds(sec: number): string {
-  const safe = Math.max(0, Math.floor(sec));
-  const mins = Math.floor(safe / 60);
-  const rem = safe % 60;
-  return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
-}
-
 export const LessonPlayerPage: React.FC = () => {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>();
   const navigate = useNavigate();
-  const {
-    courses,
-    getLessonWatchPercent,
-    updateLessonWatchPercent,
-    toggleLessonCompleted,
-    getCourseProgressStats,
-    threadedComments,
-    setThreadedComments,
-    setReports,
-    addToast,
-  } = useApp();
+  const { addToast } = useApp();
   const { user } = useAuth();
 
-  const student: UserProfile = user ?? {
-    id: '',
-    name: 'Student',
-    email: '',
-    role: 'student',
-    avatar: '',
-    title: 'Learner',
-    bio: '',
-    joinedAt: '',
-    status: 'Active',
-  };
-  const course = useMemo(
-    () => courses.find((c) => c.id === courseId) || courses[0],
-    [courses, courseId]
+  const resolvedCourseId = courseId ?? '';
+  const resolvedLessonId = lessonId ?? '';
+
+  const lessonDetailQuery = useLessonDetail(resolvedCourseId, resolvedLessonId);
+  const courseProgressQuery = useCourseProgress(resolvedCourseId);
+
+  const [commentSort, setCommentSort] = useState<'newest' | 'top'>('newest');
+  const [commentLimit, setCommentLimit] = useState<number>(4);
+
+  const commentsQuery = useLessonComments(
+    resolvedLessonId,
+    { sort: commentSort, page: 1, limit: commentLimit },
+    Boolean(resolvedLessonId)
   );
 
-  // Resolve active lesson from our 12-lesson structured syllabus
-  const activeLessonIndex = useMemo(() => {
-    const idx = ALL_STUDENT_LESSONS.findIndex((l) => l.id === lessonId);
-    return idx >= 0 ? idx : 3; // Default to Lesson 4 (lesson-103, 72% watched)
-  }, [lessonId]);
+  const saveProgressMutation = useSaveLessonProgressMutation();
+  const completeLessonMutation = useCompleteLessonMutation();
+  const uncompleteLessonMutation = useUncompleteLessonMutation();
 
-  const activeLesson: StudentLessonItem = ALL_STUDENT_LESSONS[activeLessonIndex];
-  usePageTitle(`${activeLesson.title} • ${course.title}`);
-  const prevLesson: StudentLessonItem | null =
-    activeLessonIndex > 0 ? ALL_STUDENT_LESSONS[activeLessonIndex - 1] : null;
-  const nextLesson: StudentLessonItem | null =
-    activeLessonIndex < ALL_STUDENT_LESSONS.length - 1
-      ? ALL_STUDENT_LESSONS[activeLessonIndex + 1]
-      : null;
+  const createCommentMutation = useCreateCommentMutation(resolvedLessonId);
+  const replyCommentMutation = useReplyCommentMutation(resolvedLessonId);
+  const updateCommentMutation = useUpdateCommentMutation(resolvedLessonId);
+  const deleteCommentMutation = useDeleteCommentMutation(resolvedLessonId);
+  const toggleLikeCommentMutation = useToggleLikeCommentMutation(resolvedLessonId);
+  const toggleLikeReplyMutation = useToggleLikeReplyMutation(resolvedLessonId);
+  const reportCommentMutation = useReportCommentMutation();
 
-  // Check if a lesson is locked: a lesson with requiresPrevious is locked if the preceding lesson is < 90% watched
-  const isLessonLocked = (lesson: StudentLessonItem, indexInAll: number): boolean => {
-    if (!lesson.requiresPrevious || indexInAll === 0) return false;
-    const preceding = ALL_STUDENT_LESSONS[indexInAll - 1];
-    const precedingPct = getLessonWatchPercent(course.id, preceding.id);
-    return precedingPct < 90;
-  };
+  const detail = lessonDetailQuery.data;
+  const activeLesson: MappedPlayerLesson | undefined = detail?.activeLesson;
 
-  const isNextLessonLocked = nextLesson
-    ? isLessonLocked(nextLesson, activeLessonIndex + 1)
-    : false;
+  usePageTitle(
+    activeLesson && detail ? `${activeLesson.title} • ${detail.courseTitle}` : 'Lesson Player'
+  );
 
-  // Live watch percent for the active lesson
-  const watchedPercent = getLessonWatchPercent(course.id, activeLesson.id);
-  const isCompleted = watchedPercent >= 90;
-  const courseStats = getCourseProgressStats(course.id);
-
-  // Video player state
-  const [isPlaying, setIsPlaying] = useState(false);
+  // Player state synchronized to server state per lesson
+  const [watchedPercent, setWatchedPercent] = useState<number>(0);
+  const [positionSeconds, setPositionSeconds] = useState<number>(0);
+  const [completed, setCompleted] = useState<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const [volume, setVolume] = useState<number>(85);
@@ -144,96 +132,248 @@ export const LessonPlayerPage: React.FC = () => {
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const seekBarRef = useRef<HTMLDivElement | null>(null);
   const hasShownResumeToastRef = useRef<string | null>(null);
+  const syncedLessonKeyRef = useRef<string | null>(null);
+  const autoCompletedRef = useRef<boolean>(false);
+  const dirtyRef = useRef<boolean>(false);
+  const latestProgressRef = useRef<{
+    courseId: string;
+    lessonId: string;
+    positionSeconds: number;
+    watchPercent: number;
+  }>({
+    courseId: resolvedCourseId,
+    lessonId: resolvedLessonId,
+    positionSeconds: 0,
+    watchPercent: 0,
+  });
 
-  // Active tab below video: 'overview' | 'resources' | 'comments'
+  // Tabs & sidebar UI state
   const [activeTab, setActiveTab] = useState<'overview' | 'resources' | 'comments'>('comments');
-
-  // Right sidebar collapsible sections & mobile slide-over state
-  const [openSectionIds, setOpenSectionIds] = useState<string[]>(() =>
-    STUDENT_COURSE_SECTIONS.map((s) => s.id)
-  );
+  const [openSectionIds, setOpenSectionIds] = useState<string[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const mobileSidebarRef = useDialogA11y(mobileSidebarOpen, () => setMobileSidebarOpen(false));
 
-  // Comments state
+  // Comments local UI state
   const [commentInput, setCommentInput] = useState('');
-  const [commentSort, setCommentSort] = useState<'newest' | 'top'>('newest');
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [openReportMenuId, setOpenReportMenuId] = useState<string | null>(null);
-  const [visibleCommentsCount, setVisibleCommentsCount] = useState<number>(4);
   const [showEmptyCommentsPreview, setShowEmptyCommentsPreview] = useState(false);
   const [commentToDeleteId, setCommentToDeleteId] = useState<string | null>(null);
 
-  // Show "Resume from 04:12" toast on open / lesson switch
+  const saveMutateRef = useRef(saveProgressMutation.mutate);
   useEffect(() => {
-    const key = `${course.id}:${activeLesson.id}`;
+    saveMutateRef.current = saveProgressMutation.mutate;
+  }, [saveProgressMutation.mutate]);
+
+  const flushPendingProgress = useCallback(() => {
+    if (!dirtyRef.current) return;
+    const snap = latestProgressRef.current;
+    if (!snap.courseId || !snap.lessonId) return;
+    dirtyRef.current = false;
+    saveMutateRef.current(snap);
+  }, []);
+
+  // Synchronize player state when switching lessons or first loading detail
+  useEffect(() => {
+    if (!detail) return;
+    const key = `${detail.courseId}:${detail.activeLesson.id}`;
+    if (syncedLessonKeyRef.current !== key) {
+      syncedLessonKeyRef.current = key;
+      const initialPos = detail.lastPositionSeconds;
+      const initialPct = detail.watchPercent;
+      setPositionSeconds(initialPos);
+      setWatchedPercent(initialPct);
+      setCompleted(detail.completed || initialPct >= 90);
+      autoCompletedRef.current = detail.completed || initialPct >= 90;
+      dirtyRef.current = false;
+      latestProgressRef.current = {
+        courseId: detail.courseId,
+        lessonId: detail.activeLesson.id,
+        positionSeconds: initialPos,
+        watchPercent: initialPct,
+      };
+      setIsPlaying(false);
+      setJustAutoCompleted(false);
+      setOpenSectionIds(detail.sections.map((s) => s.id));
+    }
+
     if (hasShownResumeToastRef.current !== key) {
       hasShownResumeToastRef.current = key;
-      addToast({
-        title: 'Resume from 04:12',
-        message: `Continuing "${activeLesson.title}" from your last saved timestamp.`,
-        variant: 'info',
-      });
+      if (detail.lastPositionSeconds > 0) {
+        addToast({
+          title: `Resume from ${formatDuration(detail.lastPositionSeconds, 'clock')}`,
+          message: `Continuing "${detail.activeLesson.title}" from your last saved timestamp.`,
+          variant: 'info',
+        });
+      }
     }
-    setIsPlaying(false);
-    setJustAutoCompleted(false);
-  }, [course.id, activeLesson.id, activeLesson.title, addToast]);
+  }, [detail, addToast]);
 
-  // Advance watch percentage while playing, and auto-complete at 90%
+  // Flush dirty playback progress when leaving the lesson or closing the page
   useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      const current = getLessonWatchPercent(course.id, activeLesson.id);
-      if (current >= 100) {
+    const onBeforeUnload = () => {
+      if (dirtyRef.current) {
+        flushPendingProgress();
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      if (dirtyRef.current) {
+        flushPendingProgress();
+      }
+    };
+  }, [resolvedCourseId, resolvedLessonId, flushPendingProgress]);
+
+  const applyProgressChange = useCallback(
+    (nextPos: number, nextPct: number, flushImmediately = false) => {
+      if (!detail) return;
+      const clampedPos = Math.max(0, Math.min(detail.activeLesson.durationSeconds, Math.round(nextPos)));
+      const clampedPct = Math.max(0, Math.min(100, Math.round(nextPct)));
+
+      setPositionSeconds(clampedPos);
+      setWatchedPercent(clampedPct);
+      latestProgressRef.current = {
+        courseId: detail.courseId,
+        lessonId: detail.activeLesson.id,
+        positionSeconds: clampedPos,
+        watchPercent: clampedPct,
+      };
+
+      if (clampedPct >= 90 && !autoCompletedRef.current) {
+        autoCompletedRef.current = true;
+        dirtyRef.current = false;
+        setCompleted(true);
+        setJustAutoCompleted(true);
+        completeLessonMutation.mutate({
+          courseId: detail.courseId,
+          lessonId: detail.activeLesson.id,
+          lessonTitle: detail.activeLesson.title,
+          isAutoComplete: true,
+        });
+        return;
+      }
+
+      dirtyRef.current = true;
+      if (flushImmediately) {
+        dirtyRef.current = false;
+        saveProgressMutation.mutate(latestProgressRef.current);
+      }
+    },
+    [detail, completeLessonMutation, saveProgressMutation]
+  );
+
+  // Advance playback smoothly while playing
+  useEffect(() => {
+    if (!isPlaying || !detail) return;
+    const duration = Math.max(1, detail.activeLesson.durationSeconds);
+
+    const tick = setInterval(() => {
+      const prevPos = latestProgressRef.current.positionSeconds;
+      const prevPct = latestProgressRef.current.watchPercent;
+      if (prevPct >= 100 && prevPos >= duration) {
         setIsPlaying(false);
         return;
       }
-      const step = Math.max(1, Math.round(playbackSpeed * 2));
-      const next = Math.min(100, current + step);
-      handleWatchPercentChange(current, next);
-    }, 900);
-    return () => clearInterval(interval);
-  }, [isPlaying, playbackSpeed, course.id, activeLesson.id, getLessonWatchPercent]);
+      const nextPos = Math.min(duration, prevPos + Math.max(1, Math.round(playbackSpeed * 5)));
+      const computedPct = Math.round((nextPos / duration) * 100);
+      const nextPct = Math.max(prevPct, computedPct);
+      applyProgressChange(nextPos, nextPct, false);
+    }, 1000);
 
-  const handleWatchPercentChange = (prevPct: number, nextPct: number) => {
-    updateLessonWatchPercent(course.id, activeLesson.id, nextPct);
-    // Rule: At 90% watched, the lesson completes automatically with check animation + toast "Lesson completed"
-    if (prevPct < 90 && nextPct >= 90) {
-      setJustAutoCompleted(true);
-      addToast({
-        title: 'Lesson completed',
-        message: `You reached ${nextPct}% watched on "${activeLesson.title}". Course progress updated!`,
-        variant: 'success',
+    return () => clearInterval(tick);
+  }, [isPlaying, playbackSpeed, detail, applyProgressChange]);
+
+  // Debounced background progress save every 10 seconds while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    const autosave = setInterval(() => {
+      if (dirtyRef.current) {
+        flushPendingProgress();
+      }
+    }, 10_000);
+    return () => clearInterval(autosave);
+  }, [isPlaying, flushPendingProgress]);
+
+  const lessonProgressById = useMemo(() => {
+    const map = new Map<
+      string,
+      { watchPercent: number; completed: boolean; locked: boolean }
+    >();
+    for (const item of courseProgressQuery.data?.lessons ?? []) {
+      map.set(item.lessonId, {
+        watchPercent: item.watchPercent,
+        completed: item.completed,
+        locked: item.locked,
       });
     }
+    return map;
+  }, [courseProgressQuery.data]);
+
+  const courseStats = useMemo(() => {
+    if (courseProgressQuery.data) {
+      return {
+        completedLessons: courseProgressQuery.data.completedLessons,
+        totalLessons: courseProgressQuery.data.totalLessons,
+        overallPercent: courseProgressQuery.data.overallPercent,
+      };
+    }
+    const flatCount = detail?.flatLessons.length ?? 0;
+    const pct = detail?.courseProgressPercent ?? 0;
+    return {
+      completedLessons: flatCount > 0 ? Math.round((pct / 100) * flatCount) : 0,
+      totalLessons: flatCount,
+      overallPercent: pct,
+    };
+  }, [courseProgressQuery.data, detail]);
+
+  const handleTogglePlay = () => {
+    setIsPlaying((prev) => {
+      const next = !prev;
+      if (prev && !next && dirtyRef.current) {
+        flushPendingProgress();
+      }
+      return next;
+    });
   };
 
   const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!seekBarRef.current) return;
+    if (!seekBarRef.current || !detail) return;
     const rect = seekBarRef.current.getBoundingClientRect();
     const ratio = (e.clientX - rect.left) / rect.width;
     const targetPct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-    handleWatchPercentChange(watchedPercent, targetPct);
+    const targetPos = Math.round((targetPct / 100) * detail.activeLesson.durationSeconds);
+    applyProgressChange(targetPos, targetPct, true);
   };
 
   const handleManualToggleComplete = () => {
-    const nowCompleted = toggleLessonCompleted(course.id, activeLesson.id);
-    if (nowCompleted) {
-      setJustAutoCompleted(true);
-      addToast({
-        title: 'Lesson completed',
-        message: `"${activeLesson.title}" marked as complete.`,
-        variant: 'success',
+    if (!detail) return;
+    if (completed) {
+      autoCompletedRef.current = false;
+      dirtyRef.current = false;
+      setCompleted(false);
+      setJustAutoCompleted(false);
+      setWatchedPercent(0);
+      setPositionSeconds(0);
+      uncompleteLessonMutation.mutate({
+        courseId: detail.courseId,
+        lessonId: detail.activeLesson.id,
+        lessonTitle: detail.activeLesson.title,
       });
     } else {
-      setJustAutoCompleted(false);
-      addToast({
-        title: 'Lesson marked as in progress',
-        message: 'Watch progress reset so you can review again.',
-        variant: 'info',
+      autoCompletedRef.current = true;
+      dirtyRef.current = false;
+      setCompleted(true);
+      setJustAutoCompleted(true);
+      setWatchedPercent(100);
+      setPositionSeconds(detail.activeLesson.durationSeconds);
+      completeLessonMutation.mutate({
+        courseId: detail.courseId,
+        lessonId: detail.activeLesson.id,
+        lessonTitle: detail.activeLesson.title,
       });
     }
   };
@@ -249,170 +389,108 @@ export const LessonPlayerPage: React.FC = () => {
     }
   };
 
-  // Calculate current and total time for display
-  // When at 72% (default for lesson-103), show 04:12 if just opened or proportional time
-  const currentSeconds =
-    watchedPercent === 72
-      ? 252 // 04:12
-      : Math.round((watchedPercent / 100) * activeLesson.durationSeconds);
-  const bufferedPercent = Math.min(100, watchedPercent + 18);
-
-  // Filter & sort threaded comments
-  const displayedComments = useMemo(() => {
-    if (showEmptyCommentsPreview) return [];
-    const list = threadedComments.filter(
-      (c) =>
-        c.status === 'approved' ||
-        (c.status === 'pending' && c.authorId === 'user-student-1')
-    );
-    return [...list].sort((a, b) => {
-      if (commentSort === 'top') return b.likesCount - a.likesCount;
-      return a.timestampSeconds - b.timestampSeconds;
-    });
-  }, [threadedComments, commentSort, showEmptyCommentsPreview]);
+  const displayedComments: MappedLessonComment[] = showEmptyCommentsPreview
+    ? []
+    : (commentsQuery.data?.items ?? []);
+  const totalCommentsCount = commentsQuery.data?.meta.total ?? displayedComments.length;
+  const commentFieldErrors = isApiError(createCommentMutation.error)
+    ? createCommentMutation.error.fieldErrors
+    : undefined;
 
   const handlePostComment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentInput.trim()) return;
-    const created: ThreadedLessonComment = {
-      id: `tcomment-${Date.now()}`,
-      courseId: course.id,
-      lessonId: activeLesson.id,
-      authorId: student.id,
-      authorName: student.name,
-      authorAvatar: student.avatar,
-      isSupervisorVerified: false,
-      status: 'pending', // Yellow "Pending review" state visible only to the author
-      createdAt: 'Just now',
-      timestampSeconds: 1,
-      content: commentInput.trim(),
-      likesCount: 0,
-      likedByMe: false,
-      replies: [],
-    };
-    setThreadedComments((prev) => [created, ...prev]);
-    setCommentInput('');
-    setShowEmptyCommentsPreview(false);
-    addToast({
-      title: 'Comment submitted for review',
-      message: 'Your comment is visible to you with a "Pending review" badge until approved by a supervisor.',
-      variant: 'info',
+    if (!commentInput.trim() || createCommentMutation.isPending) return;
+    createCommentMutation.mutate(commentInput, {
+      onSuccess: () => {
+        setCommentInput('');
+        setShowEmptyCommentsPreview(false);
+      },
     });
-  };
-
-  const handleToggleLikeComment = (commentId: string) => {
-    setThreadedComments((prev) =>
-      prev.map((c) => {
-        if (c.id !== commentId) return c;
-        const nextLiked = !c.likedByMe;
-        return {
-          ...c,
-          likedByMe: nextLiked,
-          likesCount: nextLiked ? c.likesCount + 1 : Math.max(0, c.likesCount - 1),
-        };
-      })
-    );
-  };
-
-  const handleToggleLikeReply = (commentId: string, replyId: string) => {
-    setThreadedComments((prev) =>
-      prev.map((c) => {
-        if (c.id !== commentId) return c;
-        return {
-          ...c,
-          replies: c.replies.map((r) => {
-            if (r.id !== replyId) return r;
-            const nextLiked = !r.likedByMe;
-            return {
-              ...r,
-              likedByMe: nextLiked,
-              likesCount: nextLiked ? r.likesCount + 1 : Math.max(0, r.likesCount - 1),
-            };
-          }),
-        };
-      })
-    );
   };
 
   const handlePostReply = (commentId: string) => {
-    if (!replyText.trim()) return;
-    setThreadedComments((prev) =>
-      prev.map((c) => {
-        if (c.id !== commentId) return c;
-        return {
-          ...c,
-          replies: [
-            ...c.replies,
-            {
-              id: `treply-${Date.now()}`,
-              authorId: student.id,
-              authorName: student.name,
-              authorAvatar: student.avatar,
-              isSupervisorVerified: false,
-              createdAt: 'Just now',
-              content: replyText.trim(),
-              likesCount: 0,
-              likedByMe: false,
-            },
-          ],
-        };
-      })
+    if (!replyText.trim() || replyCommentMutation.isPending) return;
+    replyCommentMutation.mutate(
+      { commentId, content: replyText },
+      {
+        onSuccess: () => {
+          setReplyText('');
+          setReplyingToId(null);
+        },
+      }
     );
-    setReplyText('');
-    setReplyingToId(null);
-    addToast({
-      title: 'Reply posted',
-      message: 'Your reply has been added to the thread.',
-      variant: 'success',
-    });
   };
 
   const handleSaveEditedComment = (commentId: string) => {
-    if (!editingText.trim()) return;
-    setThreadedComments((prev) =>
-      prev.map((c) => (c.id === commentId ? { ...c, content: editingText.trim() } : c))
-    );
-    setEditingCommentId(null);
-    setEditingText('');
-    addToast({
-      title: 'Comment updated',
-      message: 'Your changes have been saved.',
-      variant: 'success',
-    });
-  };
-
-  const handleDeleteComment = (commentId: string) => {
-    setThreadedComments((prev) => prev.filter((c) => c.id !== commentId));
-    addToast({
-      title: 'Comment deleted',
-      message: 'Your comment was removed from this lesson.',
-      variant: 'info',
-    });
-  };
-
-  const handleReportComment = (comment: ThreadedLessonComment, reason: string) => {
-    setOpenReportMenuId(null);
-    setReports((prev) => [
+    if (!editingText.trim() || updateCommentMutation.isPending) return;
+    updateCommentMutation.mutate(
+      { commentId, content: editingText },
       {
-        id: `rep-${Date.now()}`,
-        targetType: 'Comment',
-        targetTitle: `Comment by ${comment.authorName} in ${activeLesson.title}`,
-        reportedBy: `${student.name} (Student)`,
-        reason,
-        severity: 'Medium',
-        createdAt: 'Just now',
-        status: 'Open',
-      },
-      ...prev,
-    ]);
-    addToast({
-      title: 'Comment reported to supervisors',
-      message: `Flagged for: ${reason}`,
-      variant: 'warning',
-    });
+        onSuccess: () => {
+          setEditingCommentId(null);
+          setEditingText('');
+        },
+      }
+    );
   };
 
-  // Right Sidebar Content ("Course content") reused on Desktop and Mobile Slide-Over
+  const handleConfirmDeleteComment = () => {
+    if (!commentToDeleteId || deleteCommentMutation.isPending) return;
+    const targetId = commentToDeleteId;
+    setCommentToDeleteId(null);
+    deleteCommentMutation.mutate(targetId);
+  };
+
+  if (lessonDetailQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-[#FAF8FF] p-4 sm:p-8 space-y-6">
+        <Skeleton className="w-64" />
+        <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-8 space-y-4">
+            <div className="aspect-video rounded-[12px] bg-[#F3EFFF] animate-pulse" />
+            <Skeleton variant="card" />
+          </div>
+          <div className="lg:col-span-4 space-y-4">
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (lessonDetailQuery.isError) {
+    if (isNotFoundError(lessonDetailQuery.error)) {
+      return <NotFound404Page />;
+    }
+    if (isForbiddenError(lessonDetailQuery.error)) {
+      return <Forbidden403Page />;
+    }
+    return (
+      <div className="min-h-screen bg-[#FAF8FF] p-6">
+        <div className="max-w-3xl mx-auto">
+          <QueryErrorState
+            error={lessonDetailQuery.error}
+            title="Unable to load lesson player"
+            onRetry={() => {
+              void lessonDetailQuery.refetch();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!detail || !activeLesson) {
+    return <NotFound404Page />;
+  }
+
+  const bufferedPercent = Math.min(100, watchedPercent + 18);
+  const nextLessonLocked = detail.nextLesson
+    ? Boolean(lessonProgressById.get(detail.nextLesson.id)?.locked)
+    : false;
+  const resumedFromLabel = formatDuration(detail.lastPositionSeconds, 'clock');
+
   const renderCourseContentSidebar = () => (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-[#E6E1F5] bg-[#FAF8FF] space-y-3">
@@ -437,11 +515,13 @@ export const LessonPlayerPage: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto divide-y divide-[#E6E1F5]">
-        {STUDENT_COURSE_SECTIONS.map((sec) => {
+        {detail.sections.map((sec) => {
           const isOpen = openSectionIds.includes(sec.id);
-          const secCompletedCount = sec.lessons.filter(
-            (l) => getLessonWatchPercent(course.id, l.id) >= 90
-          ).length;
+          const secCompletedCount = sec.lessons.filter((l) => {
+            if (l.id === activeLesson.id) return completed;
+            const prog = lessonProgressById.get(l.id);
+            return Boolean(prog?.completed);
+          }).length;
 
           return (
             <div key={sec.id} className="bg-white">
@@ -461,7 +541,7 @@ export const LessonPlayerPage: React.FC = () => {
                     {sec.title}
                   </p>
                   <p className="text-[12px] text-[#5F5B75]">
-                    {secCompletedCount}/{sec.lessons.length} completed • {sec.subtitle.split('•')[1]}
+                    {secCompletedCount}/{sec.lessons.length} completed • {sec.totalDurationLabel}
                   </p>
                 </div>
                 <ChevronDown
@@ -474,11 +554,11 @@ export const LessonPlayerPage: React.FC = () => {
               {isOpen && (
                 <div className="divide-y divide-[#E6E1F5]/60">
                   {sec.lessons.map((lesson) => {
-                    const globalIdx = ALL_STUDENT_LESSONS.findIndex((l) => l.id === lesson.id);
-                    const pct = getLessonWatchPercent(course.id, lesson.id);
-                    const lessonCompleted = pct >= 90;
                     const isCurrent = lesson.id === activeLesson.id;
-                    const locked = isLessonLocked(lesson, globalIdx);
+                    const prog = lessonProgressById.get(lesson.id);
+                    const pct = isCurrent ? watchedPercent : (prog?.watchPercent ?? 0);
+                    const lessonCompleted = isCurrent ? completed : Boolean(prog?.completed);
+                    const locked = !isCurrent && Boolean(prog?.locked);
 
                     return (
                       <button
@@ -494,19 +574,19 @@ export const LessonPlayerPage: React.FC = () => {
                             });
                             return;
                           }
+                          flushPendingProgress();
                           setMobileSidebarOpen(false);
-                          navigate(`/learn/${course.id}/${lesson.id}`);
+                          navigate(`/learn/${detail.courseId}/${lesson.id}`);
                         }}
                         className={`w-full px-4 py-3 text-left flex items-start justify-between gap-3 transition-colors cursor-pointer ${
                           isCurrent
                             ? 'bg-[#F3EFFF] border-l-4 border-l-[#6D4AE0]'
                             : locked
-                            ? 'bg-[#FAF8FF]/60 opacity-65'
-                            : 'hover:bg-[#FAF8FF]'
+                              ? 'bg-[#FAF8FF]/60 opacity-65'
+                              : 'hover:bg-[#FAF8FF]'
                         }`}
                       >
                         <div className="flex items-start gap-2.5 min-w-0">
-                          {/* State icon: completed check, current play, locked padlock, or mini watch-progress */}
                           <div className="mt-0.5 shrink-0">
                             {lessonCompleted ? (
                               <CheckCircle2 className="w-4 h-4 text-[#16A34A]" />
@@ -536,8 +616,8 @@ export const LessonPlayerPage: React.FC = () => {
                               {lesson.title}
                             </p>
                             <div className="flex items-center gap-2 mt-1 text-[11px] text-[#5F5B75]">
-                              <span>{lesson.duration}</span>
-                              {pct > 0 && pct < 90 && (
+                              <span>{lesson.durationLabel}</span>
+                              {pct > 0 && !lessonCompleted && (
                                 <span className="text-[#B45309] font-semibold">
                                   • {pct}% watched
                                 </span>
@@ -562,7 +642,7 @@ export const LessonPlayerPage: React.FC = () => {
           );
         })}
 
-        {/* Final Exam Row at the end of the sidebar */}
+        {/* Final Exam Row */}
         <div className="p-4 bg-[#F3EFFF]/60">
           <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-3.5 shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between">
@@ -577,12 +657,12 @@ export const LessonPlayerPage: React.FC = () => {
               />
             </div>
             <p className="font-display font-bold text-[15px] text-[#1E1B2E]">
-              {course.title} Assessment
+              {detail.courseTitle} Assessment
             </p>
             <p className="text-[12px] text-[#5F5B75]">
-              20 multiple-choice questions • 45 mins • Instant grading
+              Multiple-choice certification assessment • Instant grading
             </p>
-            <Link to={`/exam/${course.id}`} className="block pt-1">
+            <Link to={`/exam/${detail.courseId}`} className="block pt-1">
               <Button variant="primary" size="sm" fullWidth>
                 Start final exam
               </Button>
@@ -595,17 +675,17 @@ export const LessonPlayerPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF8FF] text-[#1E1B2E]">
-      {/* SLIM TOP BAR (Logo on white surface, course title, progress ring & %, "Back to course") */}
+      {/* SLIM TOP BAR */}
       <header className="sticky top-0 z-30 h-16 bg-white border-b border-[#E6E1F5] px-4 sm:px-6 flex items-center justify-between gap-4 shadow-purple-sm">
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <BrandLogo size="sm" showText={false} />
           <div className="h-6 w-px bg-[#E6E1F5] hidden sm:block" />
           <div className="min-w-0">
             <Link
-              to={`/student/progress/${course.id}`}
+              to={`/student/progress/${detail.courseId}`}
               className="font-display font-bold text-[16px] sm:text-[18px] text-[#1E1B2E] hover:text-[#6D4AE0] transition-colors truncate block"
             >
-              {course.title}
+              {detail.courseTitle}
             </Link>
             <p className="text-[12px] text-[#5F5B75] truncate hidden sm:block">
               {activeLesson.sectionTitle} • {activeLesson.title}
@@ -614,9 +694,8 @@ export const LessonPlayerPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-          {/* Course Progress Ring and % */}
           <Link
-            to={`/student/progress/${course.id}`}
+            to={`/student/progress/${detail.courseId}`}
             className="flex items-center gap-2.5 px-3 py-1 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5] hover:border-[#A78BFA] transition-colors"
             title="View detailed course progress"
           >
@@ -631,7 +710,6 @@ export const LessonPlayerPage: React.FC = () => {
             </div>
           </Link>
 
-          {/* Mobile Slide-Over Trigger for Course Content Sidebar */}
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(true)}
@@ -641,8 +719,7 @@ export const LessonPlayerPage: React.FC = () => {
             <span className="hidden sm:inline">Course content</span>
           </button>
 
-          {/* Back to course button */}
-          <Link to={`/student/progress/${course.id}`}>
+          <Link to={`/student/progress/${detail.courseId}`}>
             <Button
               variant="secondary"
               size="sm"
@@ -654,36 +731,39 @@ export const LessonPlayerPage: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN FOCUSED BODY: Left Video + Tabs Column & Right "Course content" Sidebar */}
+      {/* MAIN BODY */}
       <div className="flex-1 flex flex-col lg:flex-row max-w-[1440px] w-full mx-auto">
-        {/* Main Video & Tabs Column */}
-        <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6 focus:outline-none">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6 focus:outline-none"
+        >
           {/* CUSTOM VIDEO PLAYER */}
           <div
             ref={playerContainerRef}
             className="rounded-[12px] bg-[#1E1B2E] text-white overflow-hidden shadow-purple-lg border border-[#E6E1F5] relative flex flex-col justify-between aspect-video"
           >
-            {/* Background video frame visual */}
             <img
-              src={course.thumbnail}
+              src={detail.courseThumbnailUrl}
               alt={activeLesson.title}
               onError={handleImageError}
               className="absolute inset-0 w-full h-full object-cover opacity-35 select-none pointer-events-none"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[#1E1B2E] via-[#1E1B2E]/35 to-[#1E1B2E]/60 pointer-events-none" />
 
-            {/* Top overlay inside video: Lesson badge + Resume pill + Auto-complete check animation */}
             <div className="relative z-10 p-4 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-[#6D4AE0] text-white text-[12px] font-bold">
-                  Lesson {activeLesson.number} of {ALL_STUDENT_LESSONS.length}
+                  Lesson {activeLesson.number} of {detail.flatLessons.length || activeLesson.number}
                 </span>
-                <span className="px-3 py-1 rounded-full bg-white/15 backdrop-blur-xs text-white text-[12px] font-semibold">
-                  Resumed from 04:12
-                </span>
+                {detail.lastPositionSeconds > 0 && (
+                  <span className="px-3 py-1 rounded-full bg-white/15 backdrop-blur-xs text-white text-[12px] font-semibold">
+                    Resumed from {resumedFromLabel}
+                  </span>
+                )}
               </div>
 
-              {isCompleted && (
+              {completed && (
                 <div
                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#16A34A] text-white text-[12px] font-bold shadow-md ${
                     justAutoCompleted ? 'animate-bounce' : ''
@@ -695,11 +775,10 @@ export const LessonPlayerPage: React.FC = () => {
               )}
             </div>
 
-            {/* Center Play/Pause Button & Title Overlay */}
             <div className="relative z-10 my-auto px-6 text-center space-y-3">
               <button
                 type="button"
-                onClick={() => setIsPlaying((p) => !p)}
+                onClick={handleTogglePlay}
                 aria-label={isPlaying ? 'Pause video' : 'Play video'}
                 className="w-18 h-18 rounded-full bg-[#6D4AE0] hover:bg-[#5A3AC7] text-white flex items-center justify-center mx-auto shadow-purple-lg transition-transform hover:scale-105 cursor-pointer border-2 border-white/80"
               >
@@ -714,15 +793,12 @@ export const LessonPlayerPage: React.FC = () => {
               </h1>
               {captionsEnabled && (
                 <div className="inline-block max-w-xl mx-auto px-4 py-1.5 rounded-[8px] bg-[#1E1B2E]/90 border border-white/15 text-[13px] sm:text-[14px] text-white/95">
-                  [CC] “When updating complex state in React, always return a new object reference so
-                  Object.is detects the transition immediately...”
+                  [CC] {activeLesson.summary}
                 </div>
               )}
             </div>
 
-            {/* Bottom Custom Video Controls Bar */}
             <div className="relative z-20 p-3 sm:p-4 bg-gradient-to-t from-[#1E1B2E] via-[#1E1B2E]/95 to-transparent space-y-2.5">
-              {/* Seek Bar showing Buffered and Watched segments + 90% completion marker */}
               <div className="space-y-1">
                 <div
                   ref={seekBarRef}
@@ -735,30 +811,36 @@ export const LessonPlayerPage: React.FC = () => {
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'ArrowRight') {
-                      handleWatchPercentChange(watchedPercent, Math.min(100, watchedPercent + 5));
+                      const nextPct = Math.min(100, watchedPercent + 5);
+                      applyProgressChange(
+                        (nextPct / 100) * activeLesson.durationSeconds,
+                        nextPct,
+                        true
+                      );
                     } else if (e.key === 'ArrowLeft') {
-                      handleWatchPercentChange(watchedPercent, Math.max(0, watchedPercent - 5));
+                      const nextPct = Math.max(0, watchedPercent - 5);
+                      applyProgressChange(
+                        (nextPct / 100) * activeLesson.durationSeconds,
+                        nextPct,
+                        true
+                      );
                     }
                   }}
                   className="group relative h-2.5 w-full rounded-full bg-white/20 cursor-pointer flex items-center"
                 >
-                  {/* Buffered segment */}
                   <div
                     className="absolute left-0 top-0 bottom-0 rounded-full bg-white/40 transition-all"
                     style={{ width: `${bufferedPercent}%` }}
                   />
-                  {/* Watched segment */}
                   <div
                     className="absolute left-0 top-0 bottom-0 rounded-full bg-[#6D4AE0] transition-all"
                     style={{ width: `${watchedPercent}%` }}
                   />
-                  {/* 90% auto-complete threshold tick mark */}
                   <div
                     className="absolute top-0 bottom-0 w-0.5 bg-[#16A34A]"
                     style={{ left: '90%' }}
                     title="90% auto-complete threshold"
                   />
-                  {/* Scrubber thumb */}
                   <div
                     className="w-4 h-4 rounded-full bg-white border-2 border-[#6D4AE0] shadow-md absolute -translate-x-1/2 group-hover:scale-125 transition-transform"
                     style={{ left: `${watchedPercent}%` }}
@@ -770,25 +852,22 @@ export const LessonPlayerPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Controls Row: Play/Pause, Time, Volume, Speed (0.5x-2x), Captions, Quality, Fullscreen */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsPlaying((p) => !p)}
+                    onClick={handleTogglePlay}
                     className="p-1.5 rounded-[8px] hover:bg-white/15 text-white cursor-pointer"
                     aria-label={isPlaying ? 'Pause' : 'Play'}
                   >
                     {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
                   </button>
 
-                  {/* Time */}
                   <span className="text-[13px] font-semibold text-white tabular-nums">
-                    {formatSeconds(currentSeconds)}{' '}
-                    <span className="text-white/60">/ {activeLesson.duration}</span>
+                    {formatDuration(positionSeconds, 'clock')}{' '}
+                    <span className="text-white/60">/ {activeLesson.durationLabel}</span>
                   </span>
 
-                  {/* Volume */}
                   <div className="hidden sm:flex items-center gap-2">
                     <button
                       type="button"
@@ -817,9 +896,7 @@ export const LessonPlayerPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Right player controls */}
                 <div className="flex items-center gap-2">
-                  {/* Speed (0.5x - 2x) */}
                   <div className="relative">
                     <button
                       type="button"
@@ -853,7 +930,6 @@ export const LessonPlayerPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Captions toggle */}
                   <button
                     type="button"
                     onClick={() => setCaptionsEnabled((c) => !c)}
@@ -868,7 +944,6 @@ export const LessonPlayerPage: React.FC = () => {
                     <span>CC</span>
                   </button>
 
-                  {/* Quality selector */}
                   <div className="relative">
                     <button
                       type="button"
@@ -903,7 +978,6 @@ export const LessonPlayerPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Fullscreen */}
                   <button
                     type="button"
                     onClick={handleToggleFullscreen}
@@ -921,7 +995,7 @@ export const LessonPlayerPage: React.FC = () => {
             </div>
           </div>
 
-          {/* WATCH TRACKING BAR & LESSON NAVIGATION UNDER THE VIDEO */}
+          {/* WATCH TRACKING BAR & LESSON NAVIGATION */}
           <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-5 shadow-purple-sm space-y-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex-1 space-y-2">
@@ -930,7 +1004,7 @@ export const LessonPlayerPage: React.FC = () => {
                     <span className="font-display font-bold text-[18px] text-[#1E1B2E]">
                       Watched {watchedPercent}%
                     </span>
-                    {isCompleted ? (
+                    {completed ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#16A34A]/12 text-[#16A34A] text-[12px] font-bold">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         Completed (90%+ rule met)
@@ -942,12 +1016,18 @@ export const LessonPlayerPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Quick simulator button to test 90% auto-completion rule immediately */}
-                  {watchedPercent < 90 && (
+                  {!completed && watchedPercent < 90 && (
                     <button
                       type="button"
-                      onClick={() => handleWatchPercentChange(watchedPercent, 92)}
-                      className="text-[12px] font-bold text-[#6D4AE0] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      disabled={completeLessonMutation.isPending}
+                      onClick={() =>
+                        applyProgressChange(
+                          Math.round(activeLesson.durationSeconds * 0.92),
+                          92,
+                          false
+                        )
+                      }
+                      className="text-[12px] font-bold text-[#6D4AE0] hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-[#F59E3B]" />
                       <span>Simulate reaching 90% watched</span>
@@ -955,11 +1035,10 @@ export const LessonPlayerPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Visual Watch Bar with 90% threshold marker */}
                 <div className="relative h-3 w-full rounded-full bg-[#F3EFFF] border border-[#E6E1F5] overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-300 ${
-                      isCompleted ? 'bg-[#16A34A]' : 'bg-[#6D4AE0]'
+                      completed ? 'bg-[#16A34A]' : 'bg-[#6D4AE0]'
                     }`}
                     style={{ width: `${watchedPercent}%` }}
                   />
@@ -971,30 +1050,32 @@ export const LessonPlayerPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Manual "Mark as complete" toggle */}
               <div className="shrink-0">
                 <Button
-                  variant={isCompleted ? 'secondary' : 'primary'}
+                  variant={completed ? 'secondary' : 'primary'}
                   size="md"
+                  loading={completeLessonMutation.isPending || uncompleteLessonMutation.isPending}
                   leftIcon={<CheckCircle2 className="w-4 h-4" />}
                   onClick={handleManualToggleComplete}
                 >
-                  {isCompleted ? 'Completed (Click to undo)' : 'Mark as complete'}
+                  {completed ? 'Completed (Click to undo)' : 'Mark as complete'}
                 </Button>
               </div>
             </div>
 
-            {/* Previous / Next Lesson Navigation Buttons */}
             <div className="pt-4 border-t border-[#E6E1F5] flex flex-wrap items-center justify-between gap-3">
               <div>
-                {prevLesson ? (
+                {detail.previousLesson ? (
                   <Button
                     variant="ghost"
                     size="sm"
                     leftIcon={<ChevronLeft className="w-4 h-4" />}
-                    onClick={() => navigate(`/learn/${course.id}/${prevLesson.id}`)}
+                    onClick={() => {
+                      flushPendingProgress();
+                      navigate(`/learn/${detail.courseId}/${detail.previousLesson!.id}`);
+                    }}
                   >
-                    Previous: {prevLesson.title.split('.')[1]?.trim() || prevLesson.title}
+                    Previous: {detail.previousLesson.title}
                   </Button>
                 ) : (
                   <span className="text-[13px] text-[#5F5B75]">First lesson in course</span>
@@ -1002,9 +1083,9 @@ export const LessonPlayerPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
-                {nextLesson ? (
+                {detail.nextLesson ? (
                   <>
-                    {isNextLessonLocked && (
+                    {nextLessonLocked && (
                       <span className="text-[12px] text-[#B45309] font-semibold hidden sm:inline">
                         Complete this lesson (90%+) to unlock next
                       </span>
@@ -1012,18 +1093,19 @@ export const LessonPlayerPage: React.FC = () => {
                     <Button
                       variant="secondary"
                       size="sm"
-                      disabled={isNextLessonLocked}
-                      leftIcon={isNextLessonLocked ? <Lock className="w-4 h-4" /> : undefined}
-                      rightIcon={
-                        !isNextLessonLocked ? <ChevronRight className="w-4 h-4" /> : undefined
-                      }
-                      onClick={() => navigate(`/learn/${course.id}/${nextLesson.id}`)}
+                      disabled={nextLessonLocked}
+                      leftIcon={nextLessonLocked ? <Lock className="w-4 h-4" /> : undefined}
+                      rightIcon={!nextLessonLocked ? <ChevronRight className="w-4 h-4" /> : undefined}
+                      onClick={() => {
+                        flushPendingProgress();
+                        navigate(`/learn/${detail.courseId}/${detail.nextLesson!.id}`);
+                      }}
                     >
                       Next lesson
                     </Button>
                   </>
                 ) : (
-                  <Link to={`/exam/${course.id}`}>
+                  <Link to={`/exam/${detail.courseId}`}>
                     <Button
                       variant="primary"
                       size="sm"
@@ -1037,14 +1119,14 @@ export const LessonPlayerPage: React.FC = () => {
             </div>
           </div>
 
-          {/* TABS: Overview, Resources (downloadable files), Comments */}
+          {/* TABS: Overview, Resources, Comments */}
           <div className="rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-sm overflow-hidden">
             <div className="px-6 pt-4 border-b border-[#E6E1F5] bg-[#FAF8FF] flex flex-wrap items-center gap-2">
               {(
                 [
                   { id: 'overview', label: 'Overview' },
-                  { id: 'resources', label: `Resources (${LESSON_RESOURCES.length})` },
-                  { id: 'comments', label: `Comments (${displayedComments.length})` },
+                  { id: 'resources', label: `Resources (${activeLesson.attachments.length})` },
+                  { id: 'comments', label: `Comments (${totalCommentsCount})` },
                 ] as const
               ).map((t) => {
                 const active = activeTab === t.id;
@@ -1066,7 +1148,6 @@ export const LessonPlayerPage: React.FC = () => {
             </div>
 
             <div className="p-6">
-              {/* TAB 1: OVERVIEW */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
                   <div className="space-y-2">
@@ -1081,22 +1162,24 @@ export const LessonPlayerPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-[#E6E1F5]">
-                    <h3 className="font-display font-bold text-[18px] text-[#1E1B2E]">
-                      Key lesson takeaways
-                    </h3>
-                    <ul className="space-y-2">
-                      {activeLesson.keyTakeaways.map((point, idx) => (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-2.5 text-[14px] text-[#1E1B2E]"
-                        >
-                          <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0 mt-0.5" />
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  {activeLesson.keyTakeaways.length > 0 && (
+                    <div className="space-y-3 pt-4 border-t border-[#E6E1F5]">
+                      <h3 className="font-display font-bold text-[18px] text-[#1E1B2E]">
+                        Key lesson takeaways
+                      </h3>
+                      <ul className="space-y-2">
+                        {activeLesson.keyTakeaways.map((point, idx) => (
+                          <li
+                            key={idx}
+                            className="flex items-start gap-2.5 text-[14px] text-[#1E1B2E]"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0 mt-0.5" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div className="p-4 rounded-[10px] bg-[#F3EFFF] border border-[#E6E1F5] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[13px]">
                     <div>
@@ -1109,7 +1192,7 @@ export const LessonPlayerPage: React.FC = () => {
                         {courseStats.totalLessons}).
                       </p>
                     </div>
-                    <Link to={`/student/progress/${course.id}`}>
+                    <Link to={`/student/progress/${detail.courseId}`}>
                       <Button variant="secondary" size="sm">
                         Full progress report
                       </Button>
@@ -1118,7 +1201,6 @@ export const LessonPlayerPage: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 2: RESOURCES (Downloadable files) */}
               {activeTab === 'resources' && (
                 <div className="space-y-4">
                   <div>
@@ -1130,58 +1212,71 @@ export const LessonPlayerPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {LESSON_RESOURCES.map((res) => (
-                      <div
-                        key={res.id}
-                        className="rounded-[12px] bg-[#FAF8FF] border border-[#E6E1F5] p-4 flex items-start justify-between gap-4 hover:border-[#A78BFA] transition-colors"
-                      >
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center shrink-0 font-display font-bold text-[12px]">
-                            {res.type}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-display font-bold text-[15px] text-[#1E1B2E] truncate">
-                              {res.title}
-                            </p>
-                            <p className="text-[12px] text-[#5F5B75] mt-0.5">
-                              {res.description}
-                            </p>
-                            <span className="inline-block text-[11px] font-bold text-[#6D4AE0] mt-1">
-                              {res.type} • {res.size}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          leftIcon={<Download className="w-3.5 h-3.5" />}
-                          onClick={() =>
-                            addToast({
-                              title: 'Downloading resource',
-                              message: `${res.title} (${res.size}) saved to your device.`,
-                              variant: 'success',
-                            })
-                          }
+                  {activeLesson.attachments.length === 0 ? (
+                    <EmptyState
+                      title="No downloadable files for this lesson"
+                      description="Check upcoming lessons or revisit previous sections for workbooks and starter templates."
+                      mood="empty"
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {activeLesson.attachments.map((res) => (
+                        <div
+                          key={res.id}
+                          className="rounded-[12px] bg-[#FAF8FF] border border-[#E6E1F5] p-4 flex items-start justify-between gap-4 hover:border-[#A78BFA] transition-colors"
                         >
-                          Download
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                          <div className="flex items-start gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center shrink-0 font-display font-bold text-[12px]">
+                              {res.typeLabel}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-display font-bold text-[15px] text-[#1E1B2E] truncate">
+                                {res.title}
+                              </p>
+                              <p className="text-[12px] text-[#5F5B75] mt-0.5">
+                                {res.description}
+                              </p>
+                              <span className="inline-block text-[11px] font-bold text-[#6D4AE0] mt-1">
+                                {res.typeLabel} • {res.sizeLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <a
+                            href={res.url}
+                            download={res.title}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() =>
+                              addToast({
+                                title: 'Downloading resource',
+                                message: `${res.title} (${res.sizeLabel}) saved to your device.`,
+                                variant: 'success',
+                              })
+                            }
+                          >
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              leftIcon={<Download className="w-3.5 h-3.5" />}
+                            >
+                              Download
+                            </Button>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* TAB 3: COMMENTS (Composer, Sort, Threaded replies, Likes, Edit/Delete, Verified/Pending/Instructor badges, Report, Load more, Empty state) */}
               {activeTab === 'comments' && (
                 <div className="space-y-6">
-                  {/* Comment Composer */}
                   <form
                     onSubmit={handlePostComment}
                     className="rounded-[12px] bg-[#FAF8FF] border border-[#E6E1F5] p-4 space-y-3"
                   >
                     <div className="flex items-start gap-3">
-                      <Avatar src={student.avatar} name={student.name} size="md" />
+                      <Avatar src={user?.avatar} name={user?.name ?? 'Student'} size="md" />
                       <div className="flex-1 space-y-2">
                         <textarea
                           rows={3}
@@ -1191,12 +1286,23 @@ export const LessonPlayerPage: React.FC = () => {
                           aria-label="Write a lesson comment"
                           className="w-full p-3 rounded-[10px] bg-white border border-[#E6E1F5] focus:border-[#6D4AE0] focus:outline-none text-[14px] text-[#1E1B2E]"
                         />
+                        {commentFieldErrors?.content?.[0] && (
+                          <p className="text-[12px] text-[#DC2626] font-semibold">
+                            {commentFieldErrors.content[0]}
+                          </p>
+                        )}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="text-[12px] text-[#5F5B75]">
                             New comments appear with a yellow "Pending review" badge until approved
                             by a supervisor.
                           </span>
-                          <Button type="submit" variant="primary" size="sm">
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            loading={createCommentMutation.isPending}
+                            disabled={!commentInput.trim()}
+                          >
                             Post comment
                           </Button>
                         </div>
@@ -1204,12 +1310,11 @@ export const LessonPlayerPage: React.FC = () => {
                     </div>
                   </form>
 
-                  {/* Sort Toolbar (Newest, Top) + Empty State Preview Toggle */}
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E6E1F5]">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-4 h-4 text-[#6D4AE0]" />
                       <span className="font-display font-bold text-[18px] text-[#1E1B2E]">
-                        Lesson discussion ({displayedComments.length})
+                        Lesson discussion ({totalCommentsCount})
                       </span>
                     </div>
 
@@ -1245,19 +1350,35 @@ export const LessonPlayerPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Threaded Comments List or Empty State */}
-                  {displayedComments.length === 0 ? (
+                  {commentsQuery.isLoading ? (
+                    <div className="space-y-4">
+                      <Skeleton variant="card" />
+                      <Skeleton variant="card" />
+                    </div>
+                  ) : commentsQuery.isError ? (
+                    <QueryErrorState
+                      error={commentsQuery.error}
+                      title="Could not load lesson comments"
+                      onRetry={() => {
+                        void commentsQuery.refetch();
+                      }}
+                    />
+                  ) : displayedComments.length === 0 ? (
                     <EmptyState
                       title="No comments on this lesson yet"
                       description="Be the first student to ask a question or share your takeaway from this video lesson."
-                      actionLabel="Restore discussion"
-                      onAction={() => setShowEmptyCommentsPreview(false)}
+                      actionLabel={showEmptyCommentsPreview ? 'Restore discussion' : undefined}
+                      onAction={
+                        showEmptyCommentsPreview
+                          ? () => setShowEmptyCommentsPreview(false)
+                          : undefined
+                      }
                       mood="empty"
                     />
                   ) : (
                     <div className="space-y-5">
-                      {displayedComments.slice(0, visibleCommentsCount).map((comment) => {
-                        const isOwn = comment.authorId === student.id;
+                      {displayedComments.map((comment) => {
+                        const isOwn = comment.authorId === user?.id;
                         const isPending = comment.status === 'pending';
                         const isEditing = editingCommentId === comment.id;
                         const isReplying = replyingToId === comment.id;
@@ -1284,14 +1405,12 @@ export const LessonPlayerPage: React.FC = () => {
                                       {comment.authorName}
                                     </span>
 
-                                    {/* Instructor badge */}
                                     {comment.isInstructor && (
                                       <span className="px-2.5 py-0.5 rounded-full bg-[#6D4AE0] text-white text-[11px] font-bold">
                                         Instructor
                                       </span>
                                     )}
 
-                                    {/* Green "Verified" badge on comments approved by a supervisor */}
                                     {comment.isSupervisorVerified && !isPending && (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#16A34A]/12 text-[#16A34A] text-[11px] font-bold">
                                         <ShieldCheck className="w-3.5 h-3.5" />
@@ -1299,7 +1418,6 @@ export const LessonPlayerPage: React.FC = () => {
                                       </span>
                                     )}
 
-                                    {/* Yellow "Pending review" state on the author's new comment (visible only to them) */}
                                     {isPending && (
                                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FEF3C7] text-[#B45309] border border-[#F59E0B]/40 text-[11px] font-bold">
                                         <Clock className="w-3 h-3" />
@@ -1311,7 +1429,6 @@ export const LessonPlayerPage: React.FC = () => {
                                 </div>
                               </div>
 
-                              {/* Edit/Delete on own comments + Report menu */}
                               <div className="flex items-center gap-1 relative">
                                 {isOwn && (
                                   <>
@@ -1339,7 +1456,6 @@ export const LessonPlayerPage: React.FC = () => {
                                   </>
                                 )}
 
-                                {/* Report Menu Trigger */}
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1359,19 +1475,23 @@ export const LessonPlayerPage: React.FC = () => {
                                     <p className="px-3 py-1 text-[11px] font-bold text-[#5F5B75]">
                                       Report comment to supervisors
                                     </p>
-                                    {[
-                                      'Spam or promotional link',
-                                      'Disrespectful or harassment',
-                                      'Off-topic or exam spoilers',
-                                    ].map((reason) => (
+                                    {LESSON_REPORT_OPTIONS.map((opt) => (
                                       <button
-                                        key={reason}
+                                        key={opt.reason}
                                         type="button"
-                                        onClick={() => handleReportComment(comment, reason)}
+                                        disabled={reportCommentMutation.isPending}
+                                        onClick={() => {
+                                          setOpenReportMenuId(null);
+                                          reportCommentMutation.mutate({
+                                            commentId: comment.id,
+                                            reason: opt.reason,
+                                            reasonLabel: opt.label,
+                                          });
+                                        }}
                                         className="w-full px-3 py-2 text-left text-[13px] text-[#1E1B2E] hover:bg-[#FEF2F2] hover:text-[#DC2626] flex items-center gap-2 cursor-pointer"
                                       >
                                         <Flag className="w-3.5 h-3.5 text-[#DC2626]" />
-                                        <span>{reason}</span>
+                                        <span>{opt.label}</span>
                                       </button>
                                     ))}
                                   </div>
@@ -1379,7 +1499,6 @@ export const LessonPlayerPage: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Comment Body or Inline Edit Mode */}
                             {isEditing ? (
                               <div className="space-y-2 pt-1">
                                 <textarea
@@ -1393,6 +1512,8 @@ export const LessonPlayerPage: React.FC = () => {
                                   <Button
                                     variant="primary"
                                     size="sm"
+                                    loading={updateCommentMutation.isPending}
+                                    disabled={!editingText.trim()}
                                     onClick={() => handleSaveEditedComment(comment.id)}
                                   >
                                     Save changes
@@ -1412,11 +1533,16 @@ export const LessonPlayerPage: React.FC = () => {
                               </p>
                             )}
 
-                            {/* Like & Reply Action Row */}
                             <div className="flex items-center gap-4 pt-1">
                               <button
                                 type="button"
-                                onClick={() => handleToggleLikeComment(comment.id)}
+                                disabled={toggleLikeCommentMutation.isPending}
+                                onClick={() =>
+                                  toggleLikeCommentMutation.mutate({
+                                    commentId: comment.id,
+                                    currentlyLiked: comment.likedByMe,
+                                  })
+                                }
                                 className={`inline-flex items-center gap-1.5 text-[13px] font-bold cursor-pointer transition-colors ${
                                   comment.likedByMe
                                     ? 'text-[#6D4AE0]'
@@ -1445,7 +1571,6 @@ export const LessonPlayerPage: React.FC = () => {
                               </button>
                             </div>
 
-                            {/* Inline Reply Box (One nested level) */}
                             {isReplying && (
                               <div className="pl-4 sm:pl-8 pt-2 space-y-2">
                                 <textarea
@@ -1460,6 +1585,8 @@ export const LessonPlayerPage: React.FC = () => {
                                   <Button
                                     variant="primary"
                                     size="sm"
+                                    loading={replyCommentMutation.isPending}
+                                    disabled={!replyText.trim()}
                                     onClick={() => handlePostReply(comment.id)}
                                   >
                                     Post reply
@@ -1478,7 +1605,6 @@ export const LessonPlayerPage: React.FC = () => {
                               </div>
                             )}
 
-                            {/* Nested Replies (1 Level) */}
                             {comment.replies.length > 0 && (
                               <div className="pl-4 sm:pl-8 pt-2 space-y-3 border-l-2 border-[#E6E1F5] ml-2">
                                 {comment.replies.map((reply) => (
@@ -1517,8 +1643,13 @@ export const LessonPlayerPage: React.FC = () => {
                                     </p>
                                     <button
                                       type="button"
+                                      disabled={toggleLikeReplyMutation.isPending}
                                       onClick={() =>
-                                        handleToggleLikeReply(comment.id, reply.id)
+                                        toggleLikeReplyMutation.mutate({
+                                          commentId: comment.id,
+                                          replyId: reply.id,
+                                          currentlyLiked: reply.likedByMe,
+                                        })
                                       }
                                       className={`inline-flex items-center gap-1 text-[12px] font-bold cursor-pointer ${
                                         reply.likedByMe ? 'text-[#6D4AE0]' : 'text-[#5F5B75]'
@@ -1535,23 +1666,23 @@ export const LessonPlayerPage: React.FC = () => {
                         );
                       })}
 
-                      {/* Load more button */}
-                      {displayedComments.length > 4 && (
+                      {(totalCommentsCount > displayedComments.length || commentLimit > 4) && (
                         <div className="pt-2 flex justify-center">
                           <Button
                             variant="secondary"
                             size="sm"
+                            loading={commentsQuery.isFetching}
                             onClick={() =>
-                              setVisibleCommentsCount((prev) =>
-                                prev >= displayedComments.length ? 4 : displayedComments.length
+                              setCommentLimit((prev) =>
+                                totalCommentsCount > displayedComments.length ? prev + 6 : 4
                               )
                             }
                           >
-                            {visibleCommentsCount >= displayedComments.length
-                              ? 'Show fewer comments'
-                              : `Load more comments (${
-                                  displayedComments.length - visibleCommentsCount
-                                } more)`}
+                            {totalCommentsCount > displayedComments.length
+                              ? `Load more comments (${
+                                  totalCommentsCount - displayedComments.length
+                                } more)`
+                              : 'Show fewer comments'}
                           </Button>
                         </div>
                       )}
@@ -1563,13 +1694,11 @@ export const LessonPlayerPage: React.FC = () => {
           </div>
         </main>
 
-        {/* RIGHT SIDEBAR "Course content" (Desktop Sticky) */}
         <aside className="hidden lg:block w-96 shrink-0 bg-white border-l border-[#E6E1F5] sticky top-16 h-[calc(100vh-4rem)] overflow-hidden">
           {renderCourseContentSidebar()}
         </aside>
       </div>
 
-      {/* MOBILE SLIDE-OVER FOR "Course content" SIDEBAR (< lg) */}
       {mobileSidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex justify-end bg-[#1E1B2E]/55 backdrop-blur-xs">
           <div className="flex-1" onClick={() => setMobileSidebarOpen(false)} />
@@ -1606,11 +1735,7 @@ export const LessonPlayerPage: React.FC = () => {
         description="Are you sure you want to permanently remove your comment and any replies from this lesson discussion?"
         confirmLabel="Delete comment"
         tone="danger"
-        onConfirm={() => {
-          if (!commentToDeleteId) return;
-          handleDeleteComment(commentToDeleteId);
-          setCommentToDeleteId(null);
-        }}
+        onConfirm={handleConfirmDeleteComment}
       />
     </div>
   );

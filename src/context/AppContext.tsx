@@ -4,8 +4,6 @@ import { subscribeToasts, type ToastPayload } from '../lib/toastBus';
 import {
   COURSES,
   CATEGORIES,
-  LESSONS,
-  COMMENTS,
   EXAMS,
   EXAM_QUESTIONS,
   CERTIFICATES,
@@ -13,8 +11,6 @@ import {
   MODERATION_REPORTS,
   Course,
   Category,
-  Lesson,
-  CourseComment,
   ExamConfig,
   ExamQuestion,
   CertificateRecord,
@@ -25,8 +21,6 @@ import {
   ALL_STUDENT_LESSONS,
   INITIAL_LESSON_WATCH_MAP,
   INITIAL_EXAM_BEST_SCORES,
-  INITIAL_THREADED_COMMENTS,
-  ThreadedLessonComment,
 } from '../data/studentLearningData';
 import {
   INITIAL_EXAM_ATTEMPTS,
@@ -50,10 +44,6 @@ interface AppContextValue {
   setCourses: React.Dispatch<React.SetStateAction<Course[]>>;
   categories: Category[];
   setCategories: React.Dispatch<React.SetStateAction<Category[]>>;
-  lessons: Lesson[];
-  setLessons: React.Dispatch<React.SetStateAction<Lesson[]>>;
-  comments: CourseComment[];
-  setComments: React.Dispatch<React.SetStateAction<CourseComment[]>>;
   exams: ExamConfig[];
   setExams: React.Dispatch<React.SetStateAction<ExamConfig[]>>;
   questions: ExamQuestion[];
@@ -67,14 +57,6 @@ interface AppContextValue {
   markAllNotificationsRead: () => void;
   reports: ModerationReport[];
   setReports: React.Dispatch<React.SetStateAction<ModerationReport[]>>;
-  wishlistIds: string[];
-  toggleWishlist: (courseId: string) => void;
-  enrolledCourseIds: string[];
-  enrollInCourse: (courseId: string) => void;
-  lessonWatchMap: Record<string, Record<string, number>>;
-  getLessonWatchPercent: (courseId: string, lessonId: string) => number;
-  updateLessonWatchPercent: (courseId: string, lessonId: string, percent: number) => void;
-  toggleLessonCompleted: (courseId: string, lessonId: string) => boolean;
   completeAllCourseLessons: (courseId: string) => void;
   getCourseProgressStats: (courseId: string) => {
     completedLessons: number;
@@ -89,8 +71,6 @@ interface AppContextValue {
   addExamAttempt: (attempt: Omit<ExamAttemptRecord, 'id' | 'attemptNumber'>) => void;
   lastSubmittedAnswers: Record<string, number[]>;
   setLastSubmittedAnswers: React.Dispatch<React.SetStateAction<Record<string, number[]>>>;
-  threadedComments: ThreadedLessonComment[];
-  setThreadedComments: React.Dispatch<React.SetStateAction<ThreadedLessonComment[]>>;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   toasts: ToastMessage[];
@@ -105,17 +85,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [courses, setCourses] = useState<Course[]>(COURSES);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
-  const [lessons, setLessons] = useState<Lesson[]>(LESSONS);
-  const [comments, setComments] = useState<CourseComment[]>(COMMENTS);
   const [exams, setExams] = useState<ExamConfig[]>(EXAMS);
   const [questions, setQuestions] = useState<ExamQuestion[]>(EXAM_QUESTIONS);
   const [certificates, setCertificates] = useState<CertificateRecord[]>(CERTIFICATES);
   const [allNotifications, setAllNotifications] = useState<NotificationItem[]>(NOTIFICATIONS);
   const [reports, setReports] = useState<ModerationReport[]>(MODERATION_REPORTS);
-  const [wishlistIds, setWishlistIds] = useState<string[]>(['course-2', 'course-6']);
-  const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(
-    ['course-1', 'course-2', 'course-3', 'course-4', 'course-5', 'course-9']
-  );
   const [lessonWatchMap, setLessonWatchMap] = useState<Record<string, Record<string, number>>>(
     INITIAL_LESSON_WATCH_MAP
   );
@@ -125,9 +99,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [examAttempts, setExamAttempts] = useState<ExamAttemptRecord[]>(INITIAL_EXAM_ATTEMPTS);
   const [lastSubmittedAnswers, setLastSubmittedAnswers] =
     useState<Record<string, number[]>>(DEFAULT_DEMO_ANSWERS);
-  const [threadedComments, setThreadedComments] = useState<ThreadedLessonComment[]>(
-    INITIAL_THREADED_COMMENTS
-  );
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -173,59 +144,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   }, [role]);
 
-  const toggleWishlist = useCallback(
-    (courseId: string) => {
-      const targetCourse = courses.find((c) => c.id === courseId);
-      setWishlistIds((prev) => {
-        const exists = prev.includes(courseId);
-        const next = exists ? prev.filter((id) => id !== courseId) : [...prev, courseId];
-        addToast({
-          title: exists ? 'Removed from wishlist' : 'Added to wishlist',
-          message: targetCourse ? targetCourse.title : undefined,
-          variant: exists ? 'info' : 'success',
-        });
-        return next;
-      });
-    },
-    [courses, addToast]
-  );
-
-  const enrollInCourse = useCallback(
-    (courseId: string) => {
-      const targetCourse = courses.find((c) => c.id === courseId);
-      setEnrolledCourseIds((prev) => (prev.includes(courseId) ? prev : [...prev, courseId]));
-      setCourses((prev) =>
-        prev.map((c) =>
-          c.id === courseId
-            ? {
-                ...c,
-                progress: typeof c.progress === 'number' ? c.progress : 12,
-                studentsCount: c.studentsCount + 1,
-              }
-            : c
-        )
-      );
-      setLessonWatchMap((prev) => {
-        if (prev[courseId]) return prev;
-        return {
-          ...prev,
-          [courseId]: {
-            'lesson-101': 100,
-            'lesson-102': 45,
-          },
-        };
-      });
-      addToast({
-        title: 'Enrollment confirmed!',
-        message: targetCourse
-          ? `You now have full access to ${targetCourse.title}.`
-          : 'You can start watching lessons right away.',
-        variant: 'success',
-      });
-    },
-    [courses, addToast]
-  );
-
   const syncCourseProgressPercent = useCallback(
     (courseId: string, courseMap: Record<string, number>) => {
       const total = ALL_STUDENT_LESSONS.length;
@@ -236,44 +154,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     },
     []
-  );
-
-  const getLessonWatchPercent = useCallback(
-    (courseId: string, lessonId: string): number => {
-      const courseMap = lessonWatchMap[courseId] || INITIAL_LESSON_WATCH_MAP['course-1'] || {};
-      return courseMap[lessonId] ?? 0;
-    },
-    [lessonWatchMap]
-  );
-
-  const updateLessonWatchPercent = useCallback(
-    (courseId: string, lessonId: string, percent: number) => {
-      const clamped = Math.max(0, Math.min(100, Math.round(percent)));
-      setLessonWatchMap((prev) => {
-        const existingCourseMap = prev[courseId] || { ...(INITIAL_LESSON_WATCH_MAP['course-1'] || {}) };
-        const updatedCourseMap = {
-          ...existingCourseMap,
-          [lessonId]: clamped,
-        };
-        syncCourseProgressPercent(courseId, updatedCourseMap);
-        return {
-          ...prev,
-          [courseId]: updatedCourseMap,
-        };
-      });
-    },
-    [syncCourseProgressPercent]
-  );
-
-  const toggleLessonCompleted = useCallback(
-    (courseId: string, lessonId: string): boolean => {
-      const currentPct = getLessonWatchPercent(courseId, lessonId);
-      const willComplete = currentPct < 90;
-      const nextPct = willComplete ? 100 : 0;
-      updateLessonWatchPercent(courseId, lessonId, nextPct);
-      return willComplete;
-    },
-    [getLessonWatchPercent, updateLessonWatchPercent]
   );
 
   const completeAllCourseLessons = useCallback(
@@ -354,10 +234,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCourses,
         categories,
         setCategories,
-        lessons,
-        setLessons,
-        comments,
-        setComments,
         exams,
         setExams,
         questions,
@@ -371,14 +247,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markAllNotificationsRead,
         reports,
         setReports,
-        wishlistIds,
-        toggleWishlist,
-        enrolledCourseIds,
-        enrollInCourse,
-        lessonWatchMap,
-        getLessonWatchPercent,
-        updateLessonWatchPercent,
-        toggleLessonCompleted,
         completeAllCourseLessons,
         getCourseProgressStats,
         examBestScores,
@@ -387,8 +255,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExamAttempt,
         lastSubmittedAnswers,
         setLastSubmittedAnswers,
-        threadedComments,
-        setThreadedComments,
         searchQuery,
         setSearchQuery,
         toasts,

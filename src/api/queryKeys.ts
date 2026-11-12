@@ -4,6 +4,7 @@ export const queryKeys = {
     profile: ['me', 'profile'] as const,
     sessions: ['me', 'sessions'] as const,
     dashboard: ['me', 'dashboard'] as const,
+    enrollmentsPrefix: ['me', 'enrollments'] as const,
     enrollments: (params?: unknown) => ['me', 'enrollments', params ?? {}] as const,
     wishlist: ['me', 'wishlist'] as const,
     courseProgress: (courseId: string) => ['me', 'progress', courseId] as const,
@@ -28,6 +29,7 @@ export const queryKeys = {
     reviews: (id: string, params?: unknown) => ['courses', 'reviews', id, params ?? {}] as const,
   },
   comments: {
+    lessonPrefix: (lessonId: string) => ['comments', 'lesson', lessonId] as const,
     lesson: (lessonId: string, params?: unknown) =>
       ['comments', 'lesson', lessonId, params ?? {}] as const,
   },
