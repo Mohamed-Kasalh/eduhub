@@ -1,0 +1,64 @@
+{
+  "modes": ["mode-a", "mode-b", "mode-c"],
+  "routesByRole": {
+    "guest": [
+      { "path": "/", "routePattern": "/", "component": "HomePage", "fetchesOnMount": true },
+      { "path": "/design-system", "routePattern": "design-system", "component": "DesignSystemPage", "fetchesOnMount": true },
+      { "path": "/courses", "routePattern": "courses", "component": "CoursesCatalogPage", "fetchesOnMount": true },
+      { "path": "/courses/course-1", "routePattern": "courses/:id", "component": "CourseDetailPage", "fetchesOnMount": true },
+      { "path": "/verify/EDUHUB-2026-8841", "routePattern": "verify/:id", "component": "VerifyCertificatePage", "fetchesOnMount": true },
+      { "path": "/login", "routePattern": "login", "component": "LoginPage", "fetchesOnMount": false },
+      { "path": "/signup", "routePattern": "signup", "component": "SignupPage", "fetchesOnMount": false },
+      { "path": "/verify-otp?email=sara.ali%40eduhub.com", "routePattern": "verify-otp", "component": "VerifyOtpPage", "fetchesOnMount": false },
+      { "path": "/forgot-password", "routePattern": "forgot-password", "component": "ForgotPasswordPage", "fetchesOnMount": false },
+      { "path": "/reset-password", "routePattern": "reset-password", "component": "ResetPasswordPage", "fetchesOnMount": false },
+      { "path": "/403", "routePattern": "403", "component": "Forbidden403Page", "fetchesOnMount": false },
+      { "path": "/404", "routePattern": "404", "component": "NotFound404Page", "fetchesOnMount": false },
+      { "path": "/500", "routePattern": "500", "component": "Server500Page", "fetchesOnMount": false },
+      { "path": "/not-found-route-check", "routePattern": "*", "component": "NotFound404Page", "fetchesOnMount": false }
+    ],
+    "student": [
+      { "path": "/student/dashboard", "routePattern": "student/dashboard", "component": "StudentDashboardPage", "fetchesOnMount": true },
+      { "path": "/student/courses", "routePattern": "student/courses", "component": "StudentCoursesPage", "fetchesOnMount": true },
+      { "path": "/student/progress/course-1", "routePattern": "student/progress/:courseId", "component": "StudentCourseProgressPage", "fetchesOnMount": true },
+      { "path": "/learn/course-1/lesson-101", "routePattern": "learn/:courseId/:lessonId", "component": "LessonPlayerPage", "fetchesOnMount": true },
+      { "path": "/exam/course-3", "routePattern": "exam/:courseId", "component": "ExamPage", "fetchesOnMount": true },
+      { "path": "/exam/course-3/result", "routePattern": "exam/:courseId/result", "component": "ExamResultPage", "fetchesOnMount": true },
+      { "path": "/certificates", "routePattern": "certificates", "component": "CertificatesListPage", "fetchesOnMount": true },
+      { "path": "/certificates/cert-1", "routePattern": "certificates/:id", "component": "CertificateDetailPage", "fetchesOnMount": true },
+      { "path": "/notifications", "routePattern": "notifications", "component": "NotificationsPage", "fetchesOnMount": true },
+      { "path": "/profile?tab=sessions", "routePattern": "profile", "component": "ProfilePage", "fetchesOnMount": true },
+      { "path": "/profile", "routePattern": "profile", "component": "ProfilePage", "fetchesOnMount": false }
+    ],
+    "instructor": [
+      { "path": "/instructor/dashboard", "routePattern": "instructor/dashboard", "component": "InstructorDashboardPage", "fetchesOnMount": true },
+      { "path": "/instructor/courses", "routePattern": "instructor/courses", "component": "InstructorCoursesPage", "fetchesOnMount": true },
+      { "path": "/instructor/courses/new?edit=course-1", "routePattern": "instructor/courses/new", "component": "InstructorCourseWizard", "fetchesOnMount": true },
+      { "path": "/instructor/courses/new", "routePattern": "instructor/courses/new", "component": "InstructorCourseWizard", "fetchesOnMount": true },
+      { "path": "/instructor/question-bank", "routePattern": "instructor/question-bank", "component": "InstructorQuestionBankPage", "fetchesOnMount": true },
+      { "path": "/instructor/exam-settings", "routePattern": "instructor/exam-settings", "component": "InstructorExamSettingsPage", "fetchesOnMount": true },
+      { "path": "/instructor/students", "routePattern": "instructor/students", "component": "InstructorStudentsPage", "fetchesOnMount": true },
+      { "path": "/instructor/comments", "routePattern": "instructor/comments", "component": "InstructorCommentsPage", "fetchesOnMount": true },
+      { "path": "/notifications", "routePattern": "notifications", "component": "NotificationsPage", "fetchesOnMount": true },
+      { "path": "/profile?tab=sessions", "routePattern": "profile", "component": "ProfilePage", "fetchesOnMount": true }
+    ],
+    "admin": [
+      { "path": "/admin/dashboard", "routePattern": "admin/dashboard", "component": "AdminDashboardPage", "fetchesOnMount": true },
+      { "path": "/admin/users", "routePattern": "admin/users", "component": "AdminUsersPage", "fetchesOnMount": true },
+      { "path": "/admin/courses", "routePattern": "admin/courses", "component": "AdminCoursesPage", "fetchesOnMount": true },
+      { "path": "/admin/categories", "routePattern": "admin/categories", "component": "AdminCategoriesPage", "fetchesOnMount": true },
+      { "path": "/admin/certificates", "routePattern": "admin/certificates", "component": "AdminCertificatesPage", "fetchesOnMount": true },
+      { "path": "/admin/settings", "routePattern": "admin/settings", "component": "AdminSettingsPage", "fetchesOnMount": true },
+      { "path": "/notifications", "routePattern": "notifications", "component": "NotificationsPage", "fetchesOnMount": true },
+      { "path": "/profile?tab=sessions", "routePattern": "profile", "component": "ProfilePage", "fetchesOnMount": true }
+    ],
+    "supervisor": [
+      { "path": "/supervisor/dashboard", "routePattern": "supervisor/dashboard", "component": "SupervisorDashboardPage", "fetchesOnMount": true },
+      { "path": "/supervisor/comments", "routePattern": "supervisor/comments", "component": "SupervisorCommentsPage", "fetchesOnMount": true },
+      { "path": "/supervisor/course-review", "routePattern": "supervisor/course-review", "component": "SupervisorCourseReviewPage", "fetchesOnMount": true },
+      { "path": "/supervisor/reports", "routePattern": "supervisor/reports", "component": "SupervisorReportsPage", "fetchesOnMount": true },
+      { "path": "/notifications", "routePattern": "notifications", "component": "NotificationsPage", "fetchesOnMount": true },
+      { "path": "/profile?tab=sessions", "routePattern": "profile", "component": "ProfilePage", "fetchesOnMount": true }
+    ]
+  }
+}
