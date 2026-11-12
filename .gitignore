@@ -1,10 +1,13 @@
 node_modules/
 dist/
 build/
+coverage/
 .cache/
 .env*
 !.env.example
 !.env.development
+.env.local
+.env.*.local
 .vite/
 vite.config.*.timestamp-*
 *.tsbuildinfo
@@ -13,11 +16,5 @@ logs/
 *.log
 .claude-replay.*
 .tmp-*
-/.figma/design-context/
-
-# Platform-managed agentplat state, not project source. In the
-# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
-# repo root IS the workspace root, so these land inside this repo rather than
-# beside it.
 /.plugins/
 /.opencode-skills/
