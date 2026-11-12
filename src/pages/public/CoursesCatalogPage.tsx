@@ -22,13 +22,21 @@ import {
   Pagination,
   Skeleton,
   EmptyState,
+  QueryErrorState,
 } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import {
-  SUBCATEGORIES_BY_CATEGORY,
-  COURSE_FILTER_META,
-  Course,
-} from '../../data/mockData';
+  useCategories,
+  useCourses,
+  useSearchSuggestions,
+} from '../../api/hooks/useCatalog';
+import {
+  toCatalogSortDto,
+  toCourseLanguageDto,
+  toCourseLevelDto,
+  toDurationBucketDto,
+} from '../../api/mappers/course.mapper';
+import { useDebouncedValue } from '../../lib/useDebouncedValue';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 import { handleImageError } from '../../utils/imageFallback';
 
@@ -46,7 +54,7 @@ const DURATION_OPTIONS: Array<{ id: DurationBucket; label: string }> = [
 const LANGUAGE_OPTIONS = ['English', 'English & Arabic CC', 'Spanish CC'];
 
 export const CoursesCatalogPage: React.FC = () => {
-  const { courses, categories, searchQuery, setSearchQuery } = useApp();
+  const { searchQuery, setSearchQuery } = useApp();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -54,13 +62,14 @@ export const CoursesCatalogPage: React.FC = () => {
   const [queryInput, setQueryInput] = useState<string>(
     () => searchParams.get('q') || searchParams.get('instructor') || searchQuery || ''
   );
+  const debouncedQuery = useDebouncedValue(queryInput.trim(), 300);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
     const cat = searchParams.get('category') || searchParams.get('cat');
-    return cat ? cat.split(',').filter(Boolean) : [];
+    return cat ? cat.split(',').filter(Boolean).slice(0, 1) : [];
   });
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>(() => {
     const sub = searchParams.get('sub');
-    return sub ? sub.split(',').filter(Boolean) : [];
+    return sub ? sub.split(',').filter(Boolean).slice(0, 1) : [];
   });
   const [expandedCatIds, setExpandedCatIds] = useState<string[]>(['cat-web', 'cat-design', 'cat-data']);
   const [level, setLevel] = useState<string>(() => searchParams.get('level') || 'All');
@@ -77,11 +86,11 @@ export const CoursesCatalogPage: React.FC = () => {
   });
   const [selectedDurations, setSelectedDurations] = useState<DurationBucket[]>(() => {
     const d = searchParams.get('dur');
-    return d ? (d.split(',') as DurationBucket[]) : [];
+    return d ? (d.split(',').slice(0, 1) as DurationBucket[]) : [];
   });
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(() => {
     const l = searchParams.get('lang');
-    return l ? l.split(',').filter(Boolean) : [];
+    return l ? l.split(',').filter(Boolean).slice(0, 1) : [];
   });
   const [includesCert, setIncludesCert] = useState<boolean>(
     () => searchParams.get('cert') === '1'
@@ -128,6 +137,15 @@ export const CoursesCatalogPage: React.FC = () => {
   // Skeleton loading state
   const [isSimulatingLoading, setIsSimulatingLoading] = useState(false);
 
+  // Reset to page 1 only when debounced query text actually changes after mount
+  const prevDebouncedQueryRef = useRef(debouncedQuery);
+  useEffect(() => {
+    if (prevDebouncedQueryRef.current !== debouncedQuery) {
+      prevDebouncedQueryRef.current = debouncedQuery;
+      setCurrentPage(1);
+    }
+  }, [debouncedQuery]);
+
   // Sync incoming URL changes (e.g. when clicking category link from Home or Navbar)
   useEffect(() => {
     const incomingCat = searchParams.get('category');
@@ -139,6 +157,52 @@ export const CoursesCatalogPage: React.FC = () => {
       setQueryInput(incomingInstructor);
     }
   }, [searchParams]);
+
+  const categoriesQuery = useCategories();
+  const categories = categoriesQuery.data ?? [];
+
+  const catalogParams = useMemo(
+    () => ({
+      q: debouncedQuery || undefined,
+      categoryId: selectedCategories[0] || undefined,
+      subcategoryId: selectedSubcategories[0] || undefined,
+      level: level !== 'All' ? toCourseLevelDto(level) : undefined,
+      price: priceMode !== 'all' ? priceMode : undefined,
+      maxPrice: maxPrice < 100 ? maxPrice : undefined,
+      minRating: minRating > 0 ? minRating : undefined,
+      duration: selectedDurations[0] ? toDurationBucketDto(selectedDurations[0]) : undefined,
+      language: selectedLanguages[0] ? toCourseLanguageDto(selectedLanguages[0]) : undefined,
+      hasCertificate: includesCert ? true : undefined,
+      hasExam: includesExam ? true : undefined,
+      sort: toCatalogSortDto(sortBy),
+      page: currentPage,
+      limit: 12,
+    }),
+    [
+      debouncedQuery,
+      selectedCategories,
+      selectedSubcategories,
+      level,
+      priceMode,
+      maxPrice,
+      minRating,
+      selectedDurations,
+      selectedLanguages,
+      includesCert,
+      includesExam,
+      sortBy,
+      currentPage,
+    ]
+  );
+
+  const coursesQuery = useCourses(catalogParams);
+  const suggestionsQuery = useSearchSuggestions(debouncedQuery, searchFocused);
+  const displayedCourses = coursesQuery.data?.items ?? [];
+  const totalCourses = coursesQuery.data?.meta.total ?? displayedCourses.length;
+  const totalPages = Math.max(1, coursesQuery.data?.meta.totalPages ?? 1);
+  const pageLimit = coursesQuery.data?.meta.limit ?? 12;
+  const rangeStart = totalCourses === 0 ? 0 : (currentPage - 1) * pageLimit + 1;
+  const rangeEnd = Math.min(currentPage * pageLimit, totalCourses);
 
   // Sync filter state to URL query parameters
   useEffect(() => {
@@ -194,30 +258,28 @@ export const CoursesCatalogPage: React.FC = () => {
 
   const toggleCategory = (catId: string) => {
     setCurrentPage(1);
-    setSelectedCategories((prev) =>
-      prev.includes(catId) ? prev.filter((id) => id !== catId) : [...prev, catId]
-    );
+    setSelectedCategories((prev) => {
+      const next = prev.includes(catId) ? [] : [catId];
+      if (!next.includes(catId)) {
+        setSelectedSubcategories([]);
+      }
+      return next;
+    });
   };
 
   const toggleSubcategory = (subId: string) => {
     setCurrentPage(1);
-    setSelectedSubcategories((prev) =>
-      prev.includes(subId) ? prev.filter((id) => id !== subId) : [...prev, subId]
-    );
+    setSelectedSubcategories((prev) => (prev.includes(subId) ? [] : [subId]));
   };
 
   const toggleDuration = (bucket: DurationBucket) => {
     setCurrentPage(1);
-    setSelectedDurations((prev) =>
-      prev.includes(bucket) ? prev.filter((b) => b !== bucket) : [...prev, bucket]
-    );
+    setSelectedDurations((prev) => (prev.includes(bucket) ? [] : [bucket]));
   };
 
   const toggleLanguage = (lang: string) => {
     setCurrentPage(1);
-    setSelectedLanguages((prev) =>
-      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
-    );
+    setSelectedLanguages((prev) => (prev.includes(lang) ? [] : [lang]));
   };
 
   const handleResetAllFilters = () => {
@@ -237,135 +299,8 @@ export const CoursesCatalogPage: React.FC = () => {
   };
 
   // Suggestions for search dropdown
-  const suggestionCourses = useMemo(() => {
-    const q = queryInput.trim().toLowerCase();
-    if (!q) return courses.slice(0, 4);
-    return courses
-      .filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) ||
-          c.instructorName.toLowerCase().includes(q) ||
-          c.categoryName.toLowerCase().includes(q) ||
-          c.tags.some((t) => t.toLowerCase().includes(q))
-      )
-      .slice(0, 4);
-  }, [courses, queryInput]);
-
-  const suggestionCategories = useMemo(() => {
-    const q = queryInput.trim().toLowerCase();
-    if (!q) return categories.slice(0, 4);
-    return categories
-      .filter(
-        (cat) =>
-          cat.name.toLowerCase().includes(q) || cat.description.toLowerCase().includes(q)
-      )
-      .slice(0, 4);
-  }, [categories, queryInput]);
-
-  // Filter and sort courses
-  const filteredAndSortedCourses = useMemo(() => {
-    const q = queryInput.trim().toLowerCase();
-
-    const filtered = courses.filter((course) => {
-      const meta = COURSE_FILTER_META[course.id];
-      const isFree = course.price === 0 || Boolean(course.isFree);
-
-      // Search query match
-      if (q) {
-        const matchesQ =
-          course.title.toLowerCase().includes(q) ||
-          course.subtitle.toLowerCase().includes(q) ||
-          course.instructorName.toLowerCase().includes(q) ||
-          course.categoryName.toLowerCase().includes(q) ||
-          course.tags.some((t) => t.toLowerCase().includes(q)) ||
-          (meta?.subcategoryName.toLowerCase().includes(q) ?? false);
-        if (!matchesQ) return false;
-      }
-
-      // Category filter
-      if (
-        selectedCategories.length > 0 &&
-        !selectedCategories.includes(course.categoryId)
-      ) {
-        return false;
-      }
-
-      // Subcategory filter
-      if (
-        selectedSubcategories.length > 0 &&
-        (!meta || !selectedSubcategories.includes(meta.subcategoryId))
-      ) {
-        return false;
-      }
-
-      // Level filter
-      if (level !== 'All' && course.level !== level) {
-        return false;
-      }
-
-      // Price mode filter
-      if (priceMode === 'free' && !isFree) return false;
-      if (priceMode === 'paid' && isFree) return false;
-
-      // Max price slider
-      if (course.price > maxPrice) return false;
-
-      // Rating filter
-      if (minRating > 0 && course.rating < minRating) return false;
-
-      // Duration filter
-      if (
-        selectedDurations.length > 0 &&
-        (!meta || !selectedDurations.includes(meta.durationBucket))
-      ) {
-        return false;
-      }
-
-      // Language filter
-      if (
-        selectedLanguages.length > 0 &&
-        (!meta || !selectedLanguages.includes(meta.language))
-      ) {
-        return false;
-      }
-
-      // Certificate toggle
-      if (includesCert && meta && !meta.includesCertificate) return false;
-
-      // Final exam toggle
-      if (includesExam && meta && !meta.includesExam) return false;
-
-      return true;
-    });
-
-    // Sort
-    return [...filtered].sort((a, b) => {
-      if (sortBy === 'popular') return b.studentsCount - a.studentsCount;
-      if (sortBy === 'newest') {
-        return (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0) || b.studentsCount - a.studentsCount;
-      }
-      if (sortBy === 'rating') {
-        return b.rating - a.rating || b.reviewCount - a.reviewCount;
-      }
-      if (sortBy === 'price-asc') return a.price - b.price;
-      if (sortBy === 'price-desc') return b.price - a.price;
-      return 0;
-    });
-  }, [
-    courses,
-    queryInput,
-    selectedCategories,
-    selectedSubcategories,
-    level,
-    priceMode,
-    maxPrice,
-    minRating,
-    selectedDurations,
-    selectedLanguages,
-    includesCert,
-    includesExam,
-    sortBy,
-  ]);
+  const suggestionCourses = (suggestionsQuery.data?.courses ?? displayedCourses).slice(0, 4);
+  const suggestionCategories = (suggestionsQuery.data?.categories ?? categories).slice(0, 4);
 
   // Build removable active filter chips
   const activeFilterChips: Array<{ id: string; label: string; onRemove: () => void }> = [];
@@ -388,7 +323,7 @@ export const CoursesCatalogPage: React.FC = () => {
     }
   });
   selectedSubcategories.forEach((subId) => {
-    const allSubs = Object.values(SUBCATEGORIES_BY_CATEGORY).flat();
+    const allSubs = categories.flatMap((cat) => cat.subcategories);
     const sub = allSubs.find((s) => s.id === subId);
     if (sub) {
       activeFilterChips.push({
@@ -491,7 +426,7 @@ export const CoursesCatalogPage: React.FC = () => {
         {openGroups.category && (
           <div className="space-y-2 pt-1">
             {categories.map((cat) => {
-              const subs = SUBCATEGORIES_BY_CATEGORY[cat.id] || [];
+              const subs = cat.subcategories || [];
               const isExpanded = expandedCatIds.includes(cat.id);
               const isChecked = selectedCategories.includes(cat.id);
               return (
@@ -867,7 +802,7 @@ export const CoursesCatalogPage: React.FC = () => {
                   All courses
                 </h1>
                 <StatusChip
-                  label={`${filteredAndSortedCourses.length} results`}
+                  label={`${totalCourses} results`}
                   variant="primary"
                   className="bg-white"
                 />
@@ -1157,30 +1092,36 @@ export const CoursesCatalogPage: React.FC = () => {
             )}
           </div>
 
-          {/* RESULTS AREA: Loading Skeleton Grid, Empty State, or 12 Course Cards */}
-          {isSimulatingLoading ? (
+          {/* RESULTS AREA: Loading Skeleton Grid, Error, Empty State, or Course Cards */}
+          {coursesQuery.isError ? (
+            <QueryErrorState
+              title="Could not load courses"
+              error={coursesQuery.error}
+              onRetry={() => void coursesQuery.refetch()}
+            />
+          ) : coursesQuery.isPending || isSimulatingLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {Array.from({ length: 12 }).map((_, idx) => (
                 <Skeleton key={idx} variant="card" />
               ))}
             </div>
-          ) : filteredAndSortedCourses.length === 0 ? (
+          ) : displayedCourses.length === 0 ? (
             <EmptyState
               title="No courses found"
-              description="No courses matched your active search query and filter combination. Reset your filters to browse all 12 courses."
+              description="No courses matched your active search query and filter combination. Reset your filters to browse all courses."
               actionLabel="Reset filters"
               onAction={handleResetAllFilters}
               mood="empty"
             />
           ) : viewMode === 'list' ? (
             <div className="space-y-4">
-              {filteredAndSortedCourses.map((course) => (
+              {displayedCourses.map((course) => (
                 <CourseCard key={course.id} course={course} layout="list" />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredAndSortedCourses.map((course) => (
+              {displayedCourses.map((course) => (
                 <CourseCard
                   key={course.id}
                   course={course}
@@ -1191,23 +1132,23 @@ export const CoursesCatalogPage: React.FC = () => {
             </div>
           )}
 
-          {/* PAGINATION & "Showing 1-12 of 248" */}
-          {filteredAndSortedCourses.length > 0 && !isSimulatingLoading && (
+          {/* PAGINATION */}
+          {displayedCourses.length > 0 && !coursesQuery.isPending && !isSimulatingLoading && (
             <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-4 shadow-purple-sm flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-[14px] text-[#5F5B75] font-medium">
                 Showing{' '}
                 <strong className="text-[#1E1B2E]">
-                  1–{filteredAndSortedCourses.length}
+                  {rangeStart}–{rangeEnd}
                 </strong>{' '}
                 of{' '}
                 <strong className="text-[#1E1B2E]">
-                  {hasAnyFilter ? filteredAndSortedCourses.length : 248}
+                  {totalCourses}
                 </strong>{' '}
                 courses
               </p>
               <Pagination
                 currentPage={currentPage}
-                totalPages={hasAnyFilter ? 1 : 5}
+                totalPages={totalPages}
                 onPageChange={(p) => {
                   setCurrentPage(p);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1265,7 +1206,7 @@ export const CoursesCatalogPage: React.FC = () => {
                 fullWidth
                 onClick={() => setMobileFilterOpen(false)}
               >
-                Apply ({filteredAndSortedCourses.length})
+                Apply ({totalCourses})
               </Button>
             </div>
           </div>

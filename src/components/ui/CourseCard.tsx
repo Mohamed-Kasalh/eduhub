@@ -9,8 +9,8 @@ import {
   CheckCircle2,
   Users,
 } from 'lucide-react';
-import { Course, COURSE_FILTER_META } from '../../data/mockData';
-import { useApp } from '../../context/AppContext';
+import type { Course } from '../../data/mockData';
+import { useToggleWishlistMutation, useWishlistIds } from '../../api/hooks/useWishlist';
 import { Button, ComponentVisualState } from './Button';
 import { FeaturedStickerTag, StatusChip } from './Badges';
 import { Avatar, ProgressBar, Skeleton } from './DataDisplay';
@@ -27,6 +27,12 @@ export interface CourseCardProps {
   className?: string;
 }
 
+const DEFAULT_PREVIEW_BULLETS = [
+  'Build production-ready projects with guided step-by-step video lessons',
+  'Validate your knowledge with interactive quizzes and a proctored final exam',
+  'Earn a verified EduHub completion certificate with a public credential ID',
+];
+
 export const CourseCard: React.FC<CourseCardProps> = ({
   course,
   showProgress = false,
@@ -37,16 +43,17 @@ export const CourseCard: React.FC<CourseCardProps> = ({
   actionLabel,
   className = '',
 }) => {
-  const { wishlistIds, toggleWishlist } = useApp();
+  const wishlistIds = useWishlistIds();
+  const toggleWishlistMutation = useToggleWishlistMutation();
   const isWishlisted = wishlistIds.includes(course.id);
-  const meta = COURSE_FILTER_META[course.id];
+  const toggleWishlist = (courseId: string) => {
+    if (toggleWishlistMutation.isPending) return;
+    toggleWishlistMutation.mutate({ courseId, currentlyWishlisted: isWishlisted });
+  };
   const previewBullets =
-    course.learningPoints ||
-    meta?.learningBullets || [
-      'Build production-ready projects with guided step-by-step video lessons',
-      'Validate your knowledge with interactive quizzes and a proctored final exam',
-      'Earn a verified EduHub completion certificate with a public credential ID',
-    ];
+    course.learningPoints && course.learningPoints.length > 0
+      ? course.learningPoints
+      : DEFAULT_PREVIEW_BULLETS;
 
   if (forceState === 'loading') {
     return <Skeleton variant="card" className={className} />;

@@ -41,7 +41,14 @@ import {
 import { handleImageError } from '../utils/imageFallback';
 import { BrandLogo, CatMascot } from '../components/brand/BrandLogo';
 import { useApp } from '../context/AppContext';
-import { ACHIEVEMENT_BADGES } from '../data/mockData';
+import { useCourses } from '../api/hooks/useCatalog';
+
+const DESIGN_SYSTEM_BADGES = [
+  { id: 'badge-1', title: 'First Course Finished', earnedAt: 'Jan 2025', color: 'purple' as const, earned: true },
+  { id: 'badge-2', title: 'Exam Honours (90%+)', earnedAt: 'Feb 2025', color: 'gold' as const, earned: true },
+  { id: 'badge-3', title: '7-Day Streak', earnedAt: 'Mar 2025', color: 'green' as const, earned: true },
+  { id: 'badge-4', title: 'Peer Helper', earnedAt: '', color: 'orange' as const, earned: false },
+];
 
 const VISUAL_STATES: ComponentVisualState[] = [
   'default',
@@ -71,7 +78,8 @@ const COLOR_SWATCHES = [
 ];
 
 export const DesignSystemPage: React.FC = () => {
-  const { courses, addToast } = useApp();
+  const { addToast } = useApp();
+  const coursesQuery = useCourses({ limit: 4 });
   const [globalState, setGlobalState] = useState<ComponentVisualState>('default');
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const [searchDemo, setSearchDemo] = useState('React 19');
@@ -95,7 +103,7 @@ export const DesignSystemPage: React.FC = () => {
     setTimeout(() => setCopiedHex(null), 1800);
   };
 
-  const sampleCourses = courses.slice(0, 3);
+  const sampleCourses = coursesQuery.data?.items.slice(0, 3) ?? [];
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-10 space-y-12">
@@ -571,7 +579,7 @@ export const DesignSystemPage: React.FC = () => {
             </p>
             <div className="flex flex-wrap items-center gap-4">
               <FeaturedStickerTag label="Featured" />
-              {ACHIEVEMENT_BADGES.map((b) => (
+              {DESIGN_SYSTEM_BADGES.map((b) => (
                 <AchievementStickerBadge
                   key={b.id}
                   title={b.title}
@@ -600,26 +608,37 @@ export const DesignSystemPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <CourseCard
-            course={sampleCourses[0]}
-            forceState={globalState}
-            onAction={() =>
-              addToast({
-                title: 'Course card action triggered',
-                message: `Selected ${sampleCourses[0].title}`,
-                variant: 'info',
-              })
-            }
-          />
-          <CourseCard
-            course={sampleCourses[1]}
-            showProgress
-            forceState={globalState}
-          />
-          <CourseCard
-            course={sampleCourses[2]}
-            forceState={globalState === 'default' ? 'loading' : globalState}
-          />
+          {sampleCourses.length >= 3 ? (
+            <>
+              <CourseCard
+                course={sampleCourses[0]}
+                forceState={globalState}
+                onAction={() =>
+                  addToast({
+                    title: 'Course card action triggered',
+                    message: `Selected ${sampleCourses[0].title}`,
+                    variant: 'info',
+                  })
+                }
+              />
+              <CourseCard
+                course={sampleCourses[1]}
+                showProgress
+                forceState={globalState}
+              />
+              <CourseCard
+                course={sampleCourses[2]}
+                forceState={globalState === 'default' ? 'loading' : globalState}
+              />
+            </>
+          ) : (
+            [0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-[340px] rounded-[12px] bg-[#F3EFFF]/60 border border-[#E6E1F5] animate-pulse"
+              />
+            ))
+          )}
         </div>
       </section>
 
@@ -663,21 +682,21 @@ export const DesignSystemPage: React.FC = () => {
           </h2>
           <div className="flex flex-wrap items-center gap-4">
             <Avatar
-              src={sampleCourses[0].instructorAvatar}
+              src={sampleCourses[0]?.instructorAvatar}
               name="Ahmed Hassan"
               size="sm"
               status="online"
               forceState={globalState}
             />
             <Avatar
-              src={sampleCourses[1].instructorAvatar}
+              src={sampleCourses[1]?.instructorAvatar}
               name="Dr. Mona Adel"
               size="md"
               status="busy"
               forceState={globalState}
             />
             <Avatar
-              src={sampleCourses[2].instructorAvatar}
+              src={sampleCourses[2]?.instructorAvatar}
               name="Salma Nabil"
               size="lg"
               status="online"
@@ -841,7 +860,7 @@ export const DesignSystemPage: React.FC = () => {
 
         <DataTable
           forceState={globalState}
-          data={courses.slice(0, 4)}
+          data={coursesQuery.data?.items.slice(0, 4) ?? []}
           onRetry={() => setGlobalState('default')}
           columns={[
             {

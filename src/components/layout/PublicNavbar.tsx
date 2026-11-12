@@ -27,8 +27,9 @@ export const PublicNavbar: React.FC = () => {
   }, [location.pathname]);
 
   const handleSearchSubmit = (q: string) => {
-    setSearchQuery(q);
-    navigate('/courses');
+    const trimmed = q.trim();
+    setSearchQuery(trimmed);
+    navigate(trimmed ? `/courses?q=${encodeURIComponent(trimmed)}` : '/courses');
   };
 
   return (

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router';
 import {
   Sparkles,
   PlayCircle,
@@ -34,12 +34,20 @@ import {
   Accordion,
   Avatar,
   EmptyState,
-  TextInput,
+  Skeleton,
+  QueryErrorState,
   ProgressBar,
 } from '../../components/ui';
 import { CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
-import { TOP_INSTRUCTORS, STUDENT_TESTIMONIALS, Course } from '../../data/mockData';
+import {
+  useCategories,
+  useCourses,
+  useFeaturedInstructors,
+  usePublicStats,
+  useTestimonials,
+} from '../../api/hooks/useCatalog';
+import { formatCompact } from '../../lib/format';
 import { handleImageError } from '../../utils/imageFallback';
 export { CoursesCatalogPage } from './CoursesCatalogPage';
 export { CourseDetailPage } from './CourseDetailPage';
@@ -66,33 +74,22 @@ const POPULAR_TOPICS = [
 ];
 
 export const HomePage: React.FC = () => {
-  const { courses, categories, searchQuery, setSearchQuery } = useApp();
+  const { searchQuery, setSearchQuery } = useApp();
   const navigate = useNavigate();
   const [activeCourseTab, setActiveCourseTab] = useState<'popular' | 'new' | 'free'>('popular');
 
-  const getDisplayedCourses = (): Course[] => {
-    if (activeCourseTab === 'popular') {
-      return [...courses]
-        .sort((a, b) => b.studentsCount - a.studentsCount)
-        .slice(0, 8);
-    }
-    if (activeCourseTab === 'new') {
-      const newFirst = [
-        ...courses.filter((c) => c.isNew),
-        ...courses.filter((c) => !c.isNew),
-      ];
-      return newFirst.slice(0, 8);
-    }
-    const freeList = [
-      ...courses.filter((c) => c.isFree || c.price === 0),
-      ...courses
-        .filter((c) => !c.isFree && c.price > 0)
-        .map((c) => ({ ...c, price: 0, isFree: true })),
-    ];
-    return freeList.slice(0, 8);
-  };
+  const statsQuery = usePublicStats();
+  const categoriesQuery = useCategories();
+  const featuredCoursesQuery = useCourses({ tab: activeCourseTab, limit: 8 });
+  const instructorsQuery = useFeaturedInstructors();
+  const testimonialsQuery = useTestimonials();
 
-  const displayedCourses = getDisplayedCourses();
+  const categories = categoriesQuery.data ?? [];
+  const displayedCourses = featuredCoursesQuery.data?.items ?? [];
+  const heroCourse = displayedCourses[0];
+  const popularTopics = statsQuery.data?.popularTopics ?? POPULAR_TOPICS;
+  const instructors = instructorsQuery.data ?? [];
+  const testimonials = testimonialsQuery.data ?? [];
 
   const handleTopicClick = (topic: string) => {
     setSearchQuery(topic);
@@ -128,7 +125,8 @@ export const HomePage: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  navigate('/courses');
+                  const q = searchQuery.trim();
+                  navigate(q ? `/courses?q=${encodeURIComponent(q)}` : '/courses');
                 }}
                 className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-2 rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-md"
               >
@@ -150,7 +148,7 @@ export const HomePage: React.FC = () => {
 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[13px] font-semibold text-[#5F5B75]">Popular topics:</span>
-                {POPULAR_TOPICS.map((topic) => (
+                {popularTopics.map((topic) => (
                   <button
                     key={topic}
                     type="button"
@@ -189,7 +187,7 @@ export const HomePage: React.FC = () => {
                 </span>
                 <span>
                   <strong className="font-display font-bold text-[17px] text-[#1E1B2E]">
-                    120+
+                    {statsQuery.data ? `${statsQuery.data.totalCoursesCount}+` : '12+'}
                   </strong>{' '}
                   courses
                 </span>
@@ -200,7 +198,7 @@ export const HomePage: React.FC = () => {
                 </span>
                 <span>
                   <strong className="font-display font-bold text-[17px] text-[#1E1B2E]">
-                    15k
+                    {statsQuery.data ? formatCompact(statsQuery.data.totalLearnersCount) : '15k'}
                   </strong>{' '}
                   learners
                 </span>
@@ -211,7 +209,7 @@ export const HomePage: React.FC = () => {
                 </span>
                 <span>
                   <strong className="font-display font-bold text-[17px] text-[#1E1B2E]">
-                    4.8
+                    {statsQuery.data ? statsQuery.data.averageRating.toFixed(1) : '4.8'}
                   </strong>{' '}
                   average rating
                 </span>
@@ -231,15 +229,19 @@ export const HomePage: React.FC = () => {
             {/* Overlapping Card 1: Video Lesson Card (thumbnail + 72% progress bar) */}
             <div className="absolute top-2 left-0 sm:left-2 w-72 sm:w-80 rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-lg p-3.5 space-y-3 z-10">
               <div className="relative h-36 w-full rounded-[10px] overflow-hidden bg-[#1E1B2E]">
-                <img
-                  src={courses[0].thumbnail}
-                  alt="Complete React Developer Course lesson"
-                  onError={handleImageError}
-                  className="w-full h-full object-cover"
-                />
+                {heroCourse ? (
+                  <img
+                    src={heroCourse.thumbnail}
+                    alt={`${heroCourse.title} lesson`}
+                    onError={handleImageError}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-[#6D4AE0] to-[#3F2A9E]" />
+                )}
                 <div className="absolute inset-0 bg-[#1E1B2E]/35 flex items-center justify-center">
                   <Link
-                    to="/learn/course-1/lesson-103"
+                    to={heroCourse ? `/courses/${heroCourse.id}` : '/courses'}
                     className="w-11 h-11 rounded-full bg-white text-[#6D4AE0] flex items-center justify-center shadow-md hover:scale-105 transition-transform"
                     aria-label="Preview video lesson"
                   >
@@ -251,8 +253,8 @@ export const HomePage: React.FC = () => {
                 </span>
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-[#6D4AE0]">
-                  Complete React Developer Course
+                <p className="text-[12px] font-semibold text-[#6D4AE0] truncate">
+                  {heroCourse?.title || 'Complete React Developer Course'}
                 </p>
                 <p className="font-display font-bold text-[16px] text-[#1E1B2E] leading-snug">
                   Lesson 3: Custom Hooks & State
@@ -304,31 +306,45 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {categories.slice(0, 8).map((cat) => (
-            <Link
-              key={cat.id}
-              to={`/courses?category=${cat.id}`}
-              className="group rounded-[12px] bg-white border border-[#E6E1F5] p-5 shadow-purple-sm hover:shadow-purple-md hover:border-[#A78BFA] hover:-translate-y-0.5 transition-all flex items-start gap-4"
-            >
-              <div
-                className="w-12 h-12 rounded-[12px] flex items-center justify-center text-white shrink-0 shadow-xs transition-transform group-hover:scale-105"
-                style={{ backgroundColor: cat.accentColor }}
+        {categoriesQuery.isPending ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <Skeleton key={idx} variant="card" />
+            ))}
+          </div>
+        ) : categoriesQuery.isError ? (
+          <QueryErrorState
+            title="Could not load categories"
+            error={categoriesQuery.error}
+            onRetry={() => void categoriesQuery.refetch()}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {categories.slice(0, 8).map((cat) => (
+              <Link
+                key={cat.id}
+                to={`/courses?category=${cat.id}`}
+                className="group rounded-[12px] bg-white border border-[#E6E1F5] p-5 shadow-purple-sm hover:shadow-purple-md hover:border-[#A78BFA] hover:-translate-y-0.5 transition-all flex items-start gap-4"
               >
-                {CATEGORY_ICONS[cat.iconName] || <BookOpen className="w-6 h-6" />}
-              </div>
-              <div className="min-w-0 flex-1 space-y-1">
-                <h3 className="text-[20px] font-display font-bold text-[#1E1B2E] group-hover:text-[#6D4AE0] transition-colors truncate">
-                  {cat.name}
-                </h3>
-                <p className="text-[13px] text-[#5F5B75] line-clamp-2">{cat.description}</p>
-                <p className="text-[12px] font-bold text-[#6D4AE0] pt-1">
-                  {cat.courseCount} courses →
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
+                <div
+                  className="w-12 h-12 rounded-[12px] flex items-center justify-center text-white shrink-0 shadow-xs transition-transform group-hover:scale-105"
+                  style={{ backgroundColor: cat.accentColor }}
+                >
+                  {CATEGORY_ICONS[cat.iconName] || <BookOpen className="w-6 h-6" />}
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <h3 className="text-[20px] font-display font-bold text-[#1E1B2E] group-hover:text-[#6D4AE0] transition-colors truncate">
+                    {cat.name}
+                  </h3>
+                  <p className="text-[13px] text-[#5F5B75] line-clamp-2">{cat.description}</p>
+                  <p className="text-[12px] font-bold text-[#6D4AE0] pt-1">
+                    {cat.courseCount} courses →
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 3. FEATURED COURSES: Tabs (Popular, New, Free), 8 Course Cards, "View all courses" button */}
@@ -377,11 +393,32 @@ export const HomePage: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {displayedCourses.map((course) => (
-            <CourseCard key={`${activeCourseTab}-${course.id}`} course={course} />
-          ))}
-        </div>
+        {featuredCoursesQuery.isPending ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 8 }).map((_, idx) => (
+              <Skeleton key={idx} variant="card" />
+            ))}
+          </div>
+        ) : featuredCoursesQuery.isError ? (
+          <QueryErrorState
+            title="Could not load featured courses"
+            error={featuredCoursesQuery.error}
+            onRetry={() => void featuredCoursesQuery.refetch()}
+          />
+        ) : displayedCourses.length === 0 ? (
+          <EmptyState
+            title="No courses in this tab yet"
+            description="Browse the full catalog to explore all available courses across EduHub."
+            actionLabel="Browse courses"
+            onAction={() => navigate('/courses')}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {displayedCourses.map((course) => (
+              <CourseCard key={`${activeCourseTab}-${course.id}`} course={course} />
+            ))}
+          </div>
+        )}
 
         <div className="flex justify-center pt-2">
           <Link to="/courses">
@@ -484,34 +521,48 @@ export const HomePage: React.FC = () => {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {TOP_INSTRUCTORS.map((inst) => (
-            <Link
-              key={inst.id}
-              to={`/courses?instructor=${encodeURIComponent(inst.name)}`}
-              className="group rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm hover:shadow-purple-md hover:border-[#A78BFA] hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4"
-            >
-              <Avatar src={inst.avatar} name={inst.name} size="xl" status="online" />
-              <div className="space-y-1">
-                <h3 className="text-[20px] font-display font-bold text-[#1E1B2E] group-hover:text-[#6D4AE0] transition-colors">
-                  {inst.name}
-                </h3>
-                <p className="text-[13px] font-semibold text-[#6D4AE0]">{inst.field}</p>
-                <p className="text-[13px] text-[#5F5B75] line-clamp-2 pt-1">{inst.bio}</p>
-              </div>
-              <div className="w-full pt-3 border-t border-[#E6E1F5] flex items-center justify-between text-[13px]">
-                <span className="inline-flex items-center gap-1 text-[#5F5B75] font-medium">
-                  <Users className="w-4 h-4 text-[#6D4AE0]" />
-                  <strong className="text-[#1E1B2E]">{inst.learnersCount}</strong> learners
-                </span>
-                <span className="inline-flex items-center gap-1 font-bold text-[#1E1B2E]">
-                  <Star className="w-4 h-4 fill-[#F5B82E] text-[#F5B82E]" />
-                  {inst.rating.toFixed(1)}
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {instructorsQuery.isPending ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <Skeleton key={idx} variant="card" />
+            ))}
+          </div>
+        ) : instructorsQuery.isError ? (
+          <QueryErrorState
+            title="Could not load instructors"
+            error={instructorsQuery.error}
+            onRetry={() => void instructorsQuery.refetch()}
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {instructors.map((inst) => (
+              <Link
+                key={inst.id}
+                to={`/courses?instructor=${encodeURIComponent(inst.name)}`}
+                className="group rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm hover:shadow-purple-md hover:border-[#A78BFA] hover:-translate-y-1 transition-all flex flex-col items-center text-center gap-4"
+              >
+                <Avatar src={inst.avatar} name={inst.name} size="xl" status="online" />
+                <div className="space-y-1">
+                  <h3 className="text-[20px] font-display font-bold text-[#1E1B2E] group-hover:text-[#6D4AE0] transition-colors">
+                    {inst.name}
+                  </h3>
+                  <p className="text-[13px] font-semibold text-[#6D4AE0]">{inst.field}</p>
+                  <p className="text-[13px] text-[#5F5B75] line-clamp-2 pt-1">{inst.bio}</p>
+                </div>
+                <div className="w-full pt-3 border-t border-[#E6E1F5] flex items-center justify-between text-[13px]">
+                  <span className="inline-flex items-center gap-1 text-[#5F5B75] font-medium">
+                    <Users className="w-4 h-4 text-[#6D4AE0]" />
+                    <strong className="text-[#1E1B2E]">{inst.learnersCount}</strong> learners
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-bold text-[#1E1B2E]">
+                    <Star className="w-4 h-4 fill-[#F5B82E] text-[#F5B82E]" />
+                    {inst.rating.toFixed(1)}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 6. STUDENT STORIES: 3 Testimonial Cards */}
@@ -526,44 +577,58 @@ export const HomePage: React.FC = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {STUDENT_TESTIMONIALS.map((story) => (
-            <div
-              key={story.id}
-              className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm flex flex-col justify-between gap-5"
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: story.rating }).map((_, idx) => (
-                      <Star
-                        key={idx}
-                        className="w-4 h-4 fill-[#F5B82E] text-[#F5B82E]"
-                      />
-                    ))}
+        {testimonialsQuery.isPending ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <Skeleton key={idx} variant="card" />
+            ))}
+          </div>
+        ) : testimonialsQuery.isError ? (
+          <QueryErrorState
+            title="Could not load student stories"
+            error={testimonialsQuery.error}
+            onRetry={() => void testimonialsQuery.refetch()}
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {testimonials.map((story) => (
+              <div
+                key={story.id}
+                className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm flex flex-col justify-between gap-5"
+              >
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: story.rating }).map((_, idx) => (
+                        <Star
+                          key={idx}
+                          className="w-4 h-4 fill-[#F5B82E] text-[#F5B82E]"
+                        />
+                      ))}
+                    </div>
+                    <Quote className="w-6 h-6 text-[#A78BFA]/50" />
                   </div>
-                  <Quote className="w-6 h-6 text-[#A78BFA]/50" />
+                  <p className="text-[15px] text-[#1E1B2E] leading-relaxed">
+                    “{story.quote}”
+                  </p>
                 </div>
-                <p className="text-[15px] text-[#1E1B2E] leading-relaxed">
-                  “{story.quote}”
-                </p>
-              </div>
 
-              <div className="pt-4 border-t border-[#E6E1F5] flex items-center gap-3">
-                <Avatar src={story.avatar} name={story.name} size="md" />
-                <div className="min-w-0">
-                  <p className="font-display font-bold text-[16px] text-[#1E1B2E] truncate">
-                    {story.name}
-                  </p>
-                  <p className="text-[12px] text-[#5F5B75] truncate">{story.role}</p>
-                  <p className="text-[12px] font-semibold text-[#6D4AE0] truncate mt-0.5">
-                    Graduate: {story.courseTitle}
-                  </p>
+                <div className="pt-4 border-t border-[#E6E1F5] flex items-center gap-3">
+                  <Avatar src={story.avatar} name={story.name} size="md" />
+                  <div className="min-w-0">
+                    <p className="font-display font-bold text-[16px] text-[#1E1B2E] truncate">
+                      {story.name}
+                    </p>
+                    <p className="text-[12px] text-[#5F5B75] truncate">{story.role}</p>
+                    <p className="text-[12px] font-semibold text-[#6D4AE0] truncate mt-0.5">
+                      Graduate: {story.courseTitle}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 7. CALL-TO-ACTION BANNER (Purple gradient: "Start learning today" + "Create free account") */}

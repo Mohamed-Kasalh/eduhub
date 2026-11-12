@@ -13,6 +13,7 @@ export const queryKeys = {
   },
   publicConfig: {
     config: ['public', 'config'] as const,
+    stats: ['public', 'stats'] as const,
     categories: ['public', 'categories'] as const,
     instructors: (featured = true) => ['public', 'instructors', featured] as const,
     testimonials: ['public', 'testimonials'] as const,
@@ -23,6 +24,7 @@ export const queryKeys = {
     list: (params?: unknown) => ['courses', 'list', params ?? {}] as const,
     detail: (id: string) => ['courses', 'detail', id] as const,
     related: (id: string) => ['courses', 'related', id] as const,
+    reviewsPrefix: (id: string) => ['courses', 'reviews', id] as const,
     reviews: (id: string, params?: unknown) => ['courses', 'reviews', id, params ?? {}] as const,
   },
   comments: {

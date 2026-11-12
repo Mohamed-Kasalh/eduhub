@@ -11,7 +11,6 @@ import {
   CERTIFICATES,
   NOTIFICATIONS,
   MODERATION_REPORTS,
-  INITIAL_COURSE_REVIEWS,
   Course,
   Category,
   Lesson,
@@ -21,7 +20,6 @@ import {
   CertificateRecord,
   NotificationItem,
   ModerationReport,
-  CourseReview,
 } from '../data/mockData';
 import {
   ALL_STUDENT_LESSONS,
@@ -73,8 +71,6 @@ interface AppContextValue {
   toggleWishlist: (courseId: string) => void;
   enrolledCourseIds: string[];
   enrollInCourse: (courseId: string) => void;
-  reviews: CourseReview[];
-  addCourseReview: (review: Omit<CourseReview, 'id' | 'createdAt' | 'helpfulCount'>) => void;
   lessonWatchMap: Record<string, Record<string, number>>;
   getLessonWatchPercent: (courseId: string, lessonId: string) => number;
   updateLessonWatchPercent: (courseId: string, lessonId: string, percent: number) => void;
@@ -120,7 +116,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<string[]>(
     ['course-1', 'course-2', 'course-3', 'course-4', 'course-5', 'course-9']
   );
-  const [reviews, setReviews] = useState<CourseReview[]>(INITIAL_COURSE_REVIEWS);
   const [lessonWatchMap, setLessonWatchMap] = useState<Record<string, Record<string, number>>>(
     INITIAL_LESSON_WATCH_MAP
   );
@@ -229,29 +224,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     },
     [courses, addToast]
-  );
-
-  const addCourseReview = useCallback(
-    (newRev: Omit<CourseReview, 'id' | 'createdAt' | 'helpfulCount'>) => {
-      const created: CourseReview = {
-        ...newRev,
-        id: `rev-${Date.now()}`,
-        createdAt: 'Just now',
-        helpfulCount: 1,
-      };
-      setReviews((prev) => [created, ...prev]);
-      setCourses((prev) =>
-        prev.map((c) =>
-          c.id === newRev.courseId ? { ...c, reviewCount: c.reviewCount + 1 } : c
-        )
-      );
-      addToast({
-        title: 'Thank you for your review!',
-        message: 'Your rating and feedback have been published.',
-        variant: 'success',
-      });
-    },
-    [addToast]
   );
 
   const syncCourseProgressPercent = useCallback(
@@ -403,8 +375,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleWishlist,
         enrolledCourseIds,
         enrollInCourse,
-        reviews,
-        addCourseReview,
         lessonWatchMap,
         getLessonWatchPercent,
         updateLessonWatchPercent,

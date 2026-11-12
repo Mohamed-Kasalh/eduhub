@@ -4,25 +4,29 @@ import { Globe, Share2, MessageSquare, Video, Send } from 'lucide-react';
 import { BrandLogo } from '../brand/BrandLogo';
 import { Button, TextInput } from '../ui';
 import { useApp } from '../../context/AppContext';
+import { useNewsletterSubscribeMutation } from '../../api/hooks/useCatalog';
+import { getErrorMessage } from '../../api/errors';
 
 export const PublicFooter: React.FC = () => {
   const { addToast } = useApp();
+  const subscribeMutation = useNewsletterSubscribeMutation();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.includes('@') || !email.includes('.')) {
+    const trimmed = email.trim();
+    if (!trimmed.includes('@') || !trimmed.includes('.')) {
       setError('Enter a valid email address like sara@domain.com to receive course updates.');
       return;
     }
     setError('');
-    setEmail('');
-    addToast({
-      title: 'Subscribed to EduHub newsletter',
-      message: 'We will send weekly course picks and study guides to your inbox.',
-      variant: 'success',
-    });
+    try {
+      await subscribeMutation.mutateAsync(trimmed);
+      setEmail('');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Enter a valid email address.'));
+    }
   };
 
   return (
@@ -162,9 +166,11 @@ export const PublicFooter: React.FC = () => {
                 variant="primary"
                 size="sm"
                 fullWidth
+                disabled={subscribeMutation.isPending}
+                loading={subscribeMutation.isPending}
                 leftIcon={<Send className="w-3.5 h-3.5" />}
               >
-                Subscribe to updates
+                {subscribeMutation.isPending ? 'Subscribing...' : 'Subscribe to updates'}
               </Button>
             </form>
           </div>

@@ -36,18 +36,26 @@ import {
   Avatar,
   ProgressBar,
   Modal,
+  Skeleton,
+  QueryErrorState,
 } from '../../components/ui';
 import { CatMascot } from '../../components/brand/BrandLogo';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import {
+  useCourseDetail,
+  useCourseReviews,
+  useCreateCourseReviewMutation,
+  useRelatedCourses,
+  useToggleReviewHelpfulMutation,
+} from '../../api/hooks/useCatalog';
+import { useEnrollCourseMutation } from '../../api/hooks/useLearning';
+import { useToggleWishlistMutation } from '../../api/hooks/useWishlist';
+import { getErrorMessage, isNotFoundError } from '../../api/errors';
+import { NotFound404Page } from '../ErrorPages';
 import { handleImageError } from '../../utils/imageFallback';
 import { usePageTitle } from '../../hooks/usePageTitle';
-import {
-  COURSE_CURRICULUM_SECTIONS,
-  COURSE_FILTER_META,
-  TOP_INSTRUCTORS,
-  CurriculumLessonItem,
-} from '../../data/mockData';
+import type { CurriculumLessonItem } from '../../data/mockData';
 
 type EnrollmentCardState = 'not-enrolled' | 'free' | 'enrolled' | 'unavailable';
 type DetailTabId = 'overview' | 'curriculum' | 'instructor' | 'reviews';
@@ -72,157 +80,149 @@ const COURSE_REQUIREMENTS = [
 export const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const {
-    courses,
-    enrolledCourseIds,
-    enrollInCourse,
-    wishlistIds,
-    toggleWishlist,
-    reviews,
-    addCourseReview,
-    addToast,
-  } = useApp();
-  const { user } = useAuth();
+  const { addToast } = useApp();
+  const { isAuthenticated } = useAuth();
 
-  const course = useMemo(
-    () => courses.find((c) => c.id === id) || courses[0],
-    [courses, id]
-  );
+  const detailQuery = useCourseDetail(id);
+  const [reviewsLimit, setReviewsLimit] = useState<number>(3);
+  const reviewsQuery = useCourseReviews(id, { page: 1, limit: reviewsLimit });
+  const relatedQuery = useRelatedCourses(id, 4);
 
-  usePageTitle(course.title);
+  const enrollMutation = useEnrollCourseMutation();
+  const createReviewMutation = useCreateCourseReviewMutation(id ?? '');
+  const helpfulMutation = useToggleReviewHelpfulMutation(id ?? '');
+  const toggleWishlistMutation = useToggleWishlistMutation();
 
-  const meta = COURSE_FILTER_META[course.id] || COURSE_FILTER_META['course-1'];
-  const isWishlisted = wishlistIds.includes(course.id);
-  const isActuallyEnrolled = enrolledCourseIds.includes(course.id);
-  const isCourseFree = course.price === 0 || Boolean(course.isFree);
-
-  // Determine natural card state from course + enrollment state, with an interactive override for previewing all 4 states
-  const naturalCardState: EnrollmentCardState = useMemo(() => {
-    if (course.unavailable || course.status === 'Rejected') return 'unavailable';
-    if (isActuallyEnrolled) return 'enrolled';
-    if (isCourseFree) return 'free';
-    return 'not-enrolled';
-  }, [course.unavailable, course.status, isActuallyEnrolled, isCourseFree]);
+  const detail = detailQuery.data;
+  const course = detail?.course;
+  usePageTitle(course?.title ?? 'Course Details');
 
   const [cardStateOverride, setCardStateOverride] = useState<EnrollmentCardState | null>(null);
-
-  // Reset override when navigating between courses
-  useEffect(() => {
-    setCardStateOverride(null);
-  }, [course.id]);
-
-  const effectiveCardState: EnrollmentCardState = cardStateOverride ?? naturalCardState;
-
-  // Active sticky in-page tab
   const [activeTab, setActiveTab] = useState<DetailTabId>('overview');
-
-  // Curriculum Accordion state (8 sections, 54 lessons, 12h 30m total)
-  const [openSectionIds, setOpenSectionIds] = useState<string[]>([
-    COURSE_CURRICULUM_SECTIONS[0].id,
-    COURSE_CURRICULUM_SECTIONS[1].id,
-  ]);
-
-  // Description "Read more" state
+  const [openSectionIds, setOpenSectionIds] = useState<string[]>([]);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
-  // Modals state
   const [demoModalOpen, setDemoModalOpen] = useState(false);
-  const [activeDemoLesson, setActiveDemoLesson] = useState<CurriculumLessonItem>(
-    COURSE_CURRICULUM_SECTIONS[0].lessons[0]
-  );
+  const [activeDemoLesson, setActiveDemoLesson] = useState<CurriculumLessonItem | null>(null);
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [instructorModalOpen, setInstructorModalOpen] = useState(false);
 
-  // Write a Review form state
   const [reviewRating, setReviewRating] = useState<number>(5);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [reviewComment, setReviewComment] = useState<string>('');
   const [reviewError, setReviewError] = useState<string>('');
 
-  // Reviews pagination ("Load more") & helpful votes
-  const [visibleReviewsCount, setVisibleReviewsCount] = useState<number>(3);
-  const [helpfulVotedIds, setHelpfulVotedIds] = useState<string[]>([]);
+  // Reset per-course view state when navigating between courses or loading detail
+  useEffect(() => {
+    setCardStateOverride(null);
+    setReviewsLimit(3);
+  }, [id]);
 
-  // Filter reviews for this course (fallback to general initial reviews so every course has rich reviews)
-  const courseReviews = useMemo(() => {
-    const direct = reviews.filter((r) => r.courseId === course.id);
-    const others = reviews.filter((r) => r.courseId !== course.id);
-    return [...direct, ...others];
-  }, [reviews, course.id]);
-
-  // Instructor details
-  const instructorInfo = useMemo(() => {
-    const found = TOP_INSTRUCTORS.find(
-      (inst) => inst.id === course.instructorId || inst.name === course.instructorName
+  useEffect(() => {
+    if (!detail) return;
+    setOpenSectionIds(detail.sections.slice(0, 2).map((s) => s.id));
+    setActiveDemoLesson(
+      detail.sections.flatMap((s) => s.lessons).find((l) => l.isPreview) ??
+        detail.sections[0]?.lessons[0] ??
+        null
     );
-    const liveInstructor =
-      user && (course.instructorId === user.id || found?.id === user.id)
-        ? user
-        : null;
-    if (found) {
-      return liveInstructor
-        ? {
-            ...found,
-            name: liveInstructor.name,
-            avatar: liveInstructor.avatar,
-            field: liveInstructor.title || found.field,
-            bio: liveInstructor.bio || found.bio,
-          }
-        : found;
+  }, [detail?.course.id]);
+
+  const sections = detail?.sections ?? [];
+  const previewLessons = useMemo(
+    () => sections.flatMap((s) => s.lessons).filter((l) => l.isPreview),
+    [sections]
+  );
+
+  if (detailQuery.isPending) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-10 space-y-8">
+        <Skeleton variant="text" className="w-64 h-6" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 space-y-6">
+            <Skeleton variant="card" className="h-64" />
+            <Skeleton variant="card" className="h-96" />
+          </div>
+          <div className="lg:col-span-4">
+            <Skeleton variant="card" className="h-[460px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (detailQuery.isError || !detail || !course) {
+    if (isNotFoundError(detailQuery.error)) {
+      return <NotFound404Page />;
     }
-    return {
-      id: course.instructorId,
-      name: liveInstructor?.name || course.instructorName,
-      field: liveInstructor?.title || `${course.categoryName} Lead Instructor`,
-      avatar: liveInstructor?.avatar || course.instructorAvatar,
-      learnersCount: course.studentsCount.toLocaleString(),
-      rating: course.rating,
-      coursesCount: 4,
-      bio:
-        liveInstructor?.bio ||
-        'Senior practitioner and educator with over 10 years of industry experience designing, building, and scaling real-world systems.',
-    };
-  }, [course, user]);
-
-  // Related courses (4 cards)
-  const relatedCourses = useMemo(() => {
-    const sameCat = courses.filter(
-      (c) => c.id !== course.id && c.categoryId === course.categoryId
+    return (
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 py-12">
+        <QueryErrorState
+          title="Could not load course details"
+          error={detailQuery.error}
+          onRetry={() => void detailQuery.refetch()}
+        />
+      </div>
     );
-    const diffCat = courses.filter(
-      (c) => c.id !== course.id && c.categoryId !== course.categoryId
-    );
-    return [...sameCat, ...diffCat].slice(0, 4);
-  }, [courses, course]);
+  }
 
-  // Learning outcomes (8 items for 2-column checklist)
-  const learningOutcomes = useMemo(() => {
-    const bullets = meta?.learningBullets || [];
-    return [...bullets, ...DEFAULT_LEARNING_OUTCOMES].slice(0, 8);
-  }, [meta]);
+  const {
+    description,
+    requirements,
+    totalSectionsCount,
+    totalLessonsCount,
+    totalDurationLabel,
+    instructorInfo,
+    ratingBreakdown,
+    viewerContext,
+  } = detail;
+
+  const isWishlisted = viewerContext.isWishlisted;
+  const isActuallyEnrolled = viewerContext.isEnrolled;
+  const isCourseFree = course.price === 0 || Boolean(course.isFree);
+  const naturalCardState: EnrollmentCardState =
+    course.unavailable || course.status === 'Rejected'
+      ? 'unavailable'
+      : isActuallyEnrolled
+      ? 'enrolled'
+      : isCourseFree
+      ? 'free'
+      : 'not-enrolled';
+  const effectiveCardState: EnrollmentCardState = cardStateOverride ?? naturalCardState;
+
+  const courseReviews = reviewsQuery.data?.items ?? [];
+  const totalReviewsCount = reviewsQuery.data?.meta.total ?? course.reviewCount;
+  const relatedCourses = relatedQuery.data ?? [];
+  const learningOutcomes =
+    course.learningPoints && course.learningPoints.length > 0
+      ? course.learningPoints.slice(0, 8)
+      : DEFAULT_LEARNING_OUTCOMES;
+  const requirementsList = requirements.length > 0 ? requirements : COURSE_REQUIREMENTS;
+  const firstLessonId = sections[0]?.lessons[0]?.id ?? 'lesson-101';
+  const nextLessonTarget = viewerContext.nextLessonId || firstLessonId;
 
   // Price discount calculation
   const displayPrice = course.price > 0 ? course.price : 49.99;
-  const displayOriginalPrice = course.originalPrice || 89.99;
+  const displayOriginalPrice = course.originalPrice || Math.max(displayPrice * 1.6, 89.99);
   const discountPercent = Math.round(
     ((displayOriginalPrice - displayPrice) / displayOriginalPrice) * 100
   );
-  const progressPercent = typeof course.progress === 'number' ? course.progress : 68;
+  const progressPercent = viewerContext.progressPercent;
 
-  const allSectionsExpanded = openSectionIds.length === COURSE_CURRICULUM_SECTIONS.length;
+  const allSectionsExpanded = sections.length > 0 && openSectionIds.length === sections.length;
 
   const handleToggleAllSections = () => {
     if (allSectionsExpanded) {
       setOpenSectionIds([]);
     } else {
-      setOpenSectionIds(COURSE_CURRICULUM_SECTIONS.map((s) => s.id));
+      setOpenSectionIds(sections.map((s) => s.id));
     }
   };
 
   const handleToggleSection = (secId: string) => {
     setOpenSectionIds((prev) =>
-      prev.includes(secId) ? prev.filter((id) => id !== secId) : [...prev, secId]
+      prev.includes(secId) ? prev.filter((sec) => sec !== secId) : [...prev, secId]
     );
   };
 
@@ -238,35 +238,54 @@ export const CourseDetailPage: React.FC = () => {
     if (lesson) {
       setActiveDemoLesson(lesson);
     } else {
-      setActiveDemoLesson(COURSE_CURRICULUM_SECTIONS[0].lessons[0]);
+      setActiveDemoLesson(previewLessons[0] ?? sections[0]?.lessons[0] ?? null);
     }
     setDemoModalOpen(true);
   };
 
-  const handleConfirmEnrollment = () => {
-    enrollInCourse(course.id);
-    setCardStateOverride('enrolled');
-    setEnrollModalOpen(false);
+  const toggleWishlist = (targetCourseId: string) => {
+    if (toggleWishlistMutation.isPending) return;
+    toggleWishlistMutation.mutate({
+      courseId: targetCourseId,
+      currentlyWishlisted: isWishlisted,
+    });
   };
 
-  const handleSubmitReview = (e: React.FormEvent) => {
+  const handleConfirmEnrollment = async () => {
+    if (!isAuthenticated) {
+      setEnrollModalOpen(false);
+      navigate(`/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`);
+      return;
+    }
+    if (enrollMutation.isPending) return;
+    try {
+      await enrollMutation.mutateAsync(course.id);
+      setCardStateOverride(null);
+      setEnrollModalOpen(false);
+    } catch {
+      // Danger toast is emitted by mutation hook
+    }
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createReviewMutation.isPending) return;
     if (reviewComment.trim().length < 10) {
       setReviewError('Please write at least 10 characters sharing your learning experience.');
       return;
     }
-    addCourseReview({
-      courseId: course.id,
-      authorName: user?.name || 'EduHub Learner',
-      authorAvatar: user?.avatar || '',
-      authorRole: user?.title || 'Enrolled Student',
-      rating: reviewRating,
-      comment: reviewComment.trim(),
-    });
-    setReviewComment('');
-    setReviewRating(5);
     setReviewError('');
-    setReviewModalOpen(false);
+    try {
+      await createReviewMutation.mutateAsync({
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      });
+      setReviewComment('');
+      setReviewRating(5);
+      setReviewModalOpen(false);
+    } catch (err) {
+      setReviewError(getErrorMessage(err, 'Could not submit your review.'));
+    }
   };
 
   const levelVariant =
@@ -275,12 +294,6 @@ export const CourseDetailPage: React.FC = () => {
       : course.level === 'Intermediate'
       ? 'orange'
       : 'primary';
-
-  const previewLessons = useMemo(
-    () =>
-      COURSE_CURRICULUM_SECTIONS.flatMap((s) => s.lessons).filter((l) => l.isPreview),
-    []
-  );
 
   return (
     <div className="pb-24 lg:pb-16">
@@ -408,7 +421,7 @@ export const CourseDetailPage: React.FC = () => {
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Globe className="w-4 h-4 text-[#6D4AE0]" />
-                  <span>{meta?.language || 'English & Arabic CC'}</span>
+                  <span>{course.language || 'English & Arabic CC'}</span>
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <Award className="w-4 h-4 text-[#6D4AE0]" />
@@ -433,7 +446,7 @@ export const CourseDetailPage: React.FC = () => {
               {(
                 [
                   { id: 'overview', label: 'Overview' },
-                  { id: 'curriculum', label: 'Curriculum (54)' },
+                  { id: 'curriculum', label: `Curriculum (${totalLessonsCount})` },
                   { id: 'instructor', label: 'Instructor' },
                   { id: 'reviews', label: `Reviews (${course.reviewCount.toLocaleString()})` },
                 ] as const
@@ -481,7 +494,7 @@ export const CourseDetailPage: React.FC = () => {
                   Requirements
                 </h3>
                 <ul className="space-y-2">
-                  {COURSE_REQUIREMENTS.map((req, i) => (
+                  {requirementsList.map((req, i) => (
                     <li
                       key={i}
                       className="flex items-start gap-2.5 text-[14px] text-[#5F5B75]"
@@ -498,35 +511,13 @@ export const CourseDetailPage: React.FC = () => {
                   Description
                 </h3>
                 <div className="space-y-3 text-[15px] text-[#5F5B75] leading-relaxed">
-                  <p>
-                    Welcome to <strong className="text-[#1E1B2E]">{course.title}</strong>, a
-                    comprehensive, project-driven curriculum designed to take you from foundational
-                    principles to shipping production-quality work. Taught by{' '}
-                    <strong className="text-[#1E1B2E]">{course.instructorName}</strong>, every
-                    module blends concise HD video walkthroughs with hands-on exercises and
-                    interactive knowledge checks.
-                  </p>
-                  <p>
-                    Unlike passive lecture series, this course is built around real-world
-                    scenarios. You will work directly with a structured starter repository, complete
-                    guided lab milestones, and validate your mastery before advancing to the next
-                    section.
-                  </p>
+                  <p>{description}</p>
                   {isDescriptionExpanded && (
-                    <>
-                      <p>
-                        Across 8 structured sections and 54 lessons, we cover architectural
-                        trade-offs, accessibility compliance, performance optimization, and
-                        automated verification. Each section concludes with a practical reading
-                        guide or timed assessment so you can measure your progress immediately.
-                      </p>
-                      <p>
-                        When you complete the lessons and pass the final timed certification exam
-                        with a score of 75% or higher, EduHub automatically issues your verified
-                        completion certificate—complete with a unique public verification code that
-                        employers and recruiters can validate in one click.
-                      </p>
-                    </>
+                    <p>
+                      When you complete the lessons across {totalSectionsCount} structured sections
+                      ({totalLessonsCount} lessons) and pass the final certification exam, EduHub
+                      issues your verified completion certificate with a public verification code.
+                    </p>
                   )}
                 </div>
                 <button
@@ -553,7 +544,7 @@ export const CourseDetailPage: React.FC = () => {
                   Course curriculum
                 </h2>
                 <p className="text-[14px] font-semibold text-[#5F5B75]">
-                  8 sections, 54 lessons, 12h 30m total
+                  {totalSectionsCount} sections, {totalLessonsCount} lessons, {totalDurationLabel} total
                 </p>
               </div>
               <button
@@ -566,7 +557,7 @@ export const CourseDetailPage: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {COURSE_CURRICULUM_SECTIONS.map((section) => {
+              {sections.map((section) => {
                 const isOpen = openSectionIds.includes(section.id);
                 return (
                   <div
@@ -650,7 +641,7 @@ export const CourseDetailPage: React.FC = () => {
                                     to={
                                       lesson.type === 'exam'
                                         ? `/exam/${course.id}`
-                                        : `/learn/${course.id}/lesson-101`
+                                        : `/learn/${course.id}/${lesson.id}`
                                     }
                                     className="text-[12px] font-bold text-[#6D4AE0] hover:underline"
                                   >
@@ -815,13 +806,7 @@ export const CourseDetailPage: React.FC = () => {
                 </div>
 
                 <div className="md:col-span-8 space-y-2.5">
-                  {[
-                    { stars: 5, percent: 82 },
-                    { stars: 4, percent: 13 },
-                    { stars: 3, percent: 3 },
-                    { stars: 2, percent: 1 },
-                    { stars: 1, percent: 1 },
-                  ].map((bar) => (
+                  {ratingBreakdown.map((bar) => (
                     <div key={bar.stars} className="flex items-center gap-3 text-[13px]">
                       <div className="w-20 flex items-center gap-1 shrink-0 font-semibold text-[#1E1B2E]">
                         <Star className="w-3.5 h-3.5 fill-[#F5B82E] text-[#F5B82E]" />
@@ -842,83 +827,99 @@ export const CourseDetailPage: React.FC = () => {
               </div>
 
               {/* Review List */}
-              <div className="divide-y divide-[#E6E1F5]">
-                {courseReviews.slice(0, visibleReviewsCount).map((rev) => {
-                  const hasVoted = helpfulVotedIds.includes(rev.id);
-                  return (
-                    <div key={rev.id} className="py-5 first:pt-1 last:pb-1 space-y-3">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar src={rev.authorAvatar} name={rev.authorName} size="md" />
-                          <div>
-                            <p className="font-display font-bold text-[16px] text-[#1E1B2E]">
-                              {rev.authorName}
-                            </p>
-                            <p className="text-[12px] text-[#5F5B75]">
-                              {rev.authorRole} • {rev.createdAt}
-                            </p>
+              {reviewsQuery.isPending ? (
+                <div className="space-y-4">
+                  <Skeleton variant="text" className="h-16" />
+                  <Skeleton variant="text" className="h-16" />
+                </div>
+              ) : reviewsQuery.isError ? (
+                <QueryErrorState
+                  title="Could not load reviews"
+                  error={reviewsQuery.error}
+                  onRetry={() => void reviewsQuery.refetch()}
+                />
+              ) : courseReviews.length === 0 ? (
+                <p className="text-[14px] text-[#5F5B75] py-4 text-center">
+                  No student reviews yet. Complete the course to be the first to leave feedback.
+                </p>
+              ) : (
+                <div className="divide-y divide-[#E6E1F5]">
+                  {courseReviews.map((rev) => {
+                    const hasVoted = rev.markedHelpfulByMe;
+                    return (
+                      <div key={rev.id} className="py-5 first:pt-1 last:pb-1 space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar src={rev.authorAvatar} name={rev.authorName} size="md" />
+                            <div>
+                              <p className="font-display font-bold text-[16px] text-[#1E1B2E]">
+                                {rev.authorName}
+                              </p>
+                              <p className="text-[12px] text-[#5F5B75]">
+                                {rev.authorRole} • {rev.createdAt}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            {Array.from({ length: 5 }).map((_, sIdx) => (
+                              <Star
+                                key={sIdx}
+                                className={`w-4 h-4 ${
+                                  sIdx < rev.rating
+                                    ? 'fill-[#F5B82E] text-[#F5B82E]'
+                                    : 'text-[#E6E1F5]'
+                                }`}
+                              />
+                            ))}
                           </div>
                         </div>
-                        <div className="flex items-center gap-0.5">
-                          {Array.from({ length: 5 }).map((_, sIdx) => (
-                            <Star
-                              key={sIdx}
-                              className={`w-4 h-4 ${
-                                sIdx < rev.rating
-                                  ? 'fill-[#F5B82E] text-[#F5B82E]'
-                                  : 'text-[#E6E1F5]'
-                              }`}
-                            />
-                          ))}
+
+                        <p className="text-[15px] text-[#1E1B2E] leading-relaxed">
+                          {rev.comment}
+                        </p>
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={helpfulMutation.isPending}
+                            onClick={() => {
+                              if (!isAuthenticated) {
+                                navigate(`/login?returnTo=${encodeURIComponent(`/courses/${course.id}`)}`);
+                                return;
+                              }
+                              helpfulMutation.mutate({
+                                reviewId: rev.id,
+                                currentlyHelpful: hasVoted,
+                              });
+                            }}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors cursor-pointer disabled:opacity-60 ${
+                              hasVoted
+                                ? 'bg-[#F3EFFF] border-[#6D4AE0] text-[#6D4AE0]'
+                                : 'bg-white border-[#E6E1F5] text-[#5F5B75] hover:text-[#1E1B2E]'
+                            }`}
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                            <span>Helpful ({rev.helpfulCount})</span>
+                          </button>
                         </div>
                       </div>
-
-                      <p className="text-[15px] text-[#1E1B2E] leading-relaxed">
-                        {rev.comment}
-                      </p>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setHelpfulVotedIds((prev) =>
-                              prev.includes(rev.id)
-                                ? prev.filter((item) => item !== rev.id)
-                                : [...prev, rev.id]
-                            )
-                          }
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold border transition-colors cursor-pointer ${
-                            hasVoted
-                              ? 'bg-[#F3EFFF] border-[#6D4AE0] text-[#6D4AE0]'
-                              : 'bg-white border-[#E6E1F5] text-[#5F5B75] hover:text-[#1E1B2E]'
-                          }`}
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" />
-                          <span>
-                            Helpful ({rev.helpfulCount + (hasVoted ? 1 : 0)})
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Load more button */}
-              {courseReviews.length > 3 && (
+              {totalReviewsCount > courseReviews.length && (
                 <div className="pt-2 flex justify-center">
                   <Button
                     variant="secondary"
                     size="md"
-                    onClick={() =>
-                      setVisibleReviewsCount((prev) =>
-                        prev >= courseReviews.length ? 3 : courseReviews.length
-                      )
-                    }
+                    disabled={reviewsQuery.isFetching}
+                    onClick={() => setReviewsLimit((prev) => prev + 5)}
                   >
-                    {visibleReviewsCount >= courseReviews.length
-                      ? 'Show fewer reviews'
-                      : `Load more reviews (${courseReviews.length - visibleReviewsCount} more)`}
+                    {reviewsQuery.isFetching
+                      ? 'Loading reviews...'
+                      : `Load more reviews (${totalReviewsCount - courseReviews.length} more)`}
                   </Button>
                 </div>
               )}
@@ -1073,7 +1074,7 @@ export const CourseDetailPage: React.FC = () => {
                       size="lg"
                       fullWidth
                       rightIcon={<ArrowRight className="w-4 h-4" />}
-                      onClick={() => navigate(`/learn/${course.id}/lesson-101`)}
+                      onClick={() => navigate(`/learn/${course.id}/${nextLessonTarget}`)}
                     >
                       Continue learning
                     </Button>
@@ -1143,11 +1144,11 @@ export const CourseDetailPage: React.FC = () => {
                 <ul className="space-y-2.5 text-[14px] text-[#5F5B75]">
                   <li className="flex items-center gap-2.5">
                     <Clock className="w-4 h-4 text-[#6D4AE0] shrink-0" />
-                    <span>12h 30m on-demand HD video</span>
+                    <span>{totalDurationLabel} on-demand HD video</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <BookOpen className="w-4 h-4 text-[#6D4AE0] shrink-0" />
-                    <span>54 structured lessons across 8 sections</span>
+                    <span>{totalLessonsCount} structured lessons across {totalSectionsCount} sections</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <FileCheck2 className="w-4 h-4 text-[#6D4AE0] shrink-0" />
@@ -1255,7 +1256,7 @@ export const CourseDetailPage: React.FC = () => {
               variant="primary"
               size="md"
               fullWidth
-              onClick={() => navigate(`/learn/${course.id}/lesson-101`)}
+              onClick={() => navigate(`/learn/${course.id}/${nextLessonTarget}`)}
             >
               Continue learning
             </Button>
@@ -1315,7 +1316,7 @@ export const CourseDetailPage: React.FC = () => {
           <div className="relative rounded-[12px] overflow-hidden bg-[#1E1B2E] aspect-video flex flex-col justify-between p-4 text-white">
             <img
               src={course.thumbnail}
-              alt={activeDemoLesson.title}
+              alt={activeDemoLesson?.title ?? course.title}
               onError={handleImageError}
               className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
@@ -1324,7 +1325,7 @@ export const CourseDetailPage: React.FC = () => {
                 Free preview lesson
               </span>
               <span className="text-[12px] font-semibold bg-[#1E1B2E]/80 px-2.5 py-0.5 rounded-full">
-                1080p HD • {activeDemoLesson.duration}
+                1080p HD • {activeDemoLesson?.duration ?? '05:00'}
               </span>
             </div>
 
@@ -1333,7 +1334,7 @@ export const CourseDetailPage: React.FC = () => {
                 <PlayCircle className="w-8 h-8" />
               </div>
               <p className="font-display font-bold text-[18px] text-white">
-                {activeDemoLesson.title}
+                {activeDemoLesson?.title ?? course.title}
               </p>
             </div>
 
@@ -1343,7 +1344,7 @@ export const CourseDetailPage: React.FC = () => {
                 <div className="w-1/3 h-full bg-[#A78BFA] rounded-full" />
               </div>
               <div className="flex items-center justify-between text-[11px] text-white/85">
-                <span>02:45 / {activeDemoLesson.duration}</span>
+                <span>02:45 / {activeDemoLesson?.duration ?? '05:00'}</span>
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center gap-1">
                     <Volume2 className="w-3.5 h-3.5" /> 100%
@@ -1362,7 +1363,7 @@ export const CourseDetailPage: React.FC = () => {
             </p>
             <div className="space-y-1.5">
               {previewLessons.map((item) => {
-                const selected = item.id === activeDemoLesson.id;
+                const selected = item.id === activeDemoLesson?.id;
                 return (
                   <button
                     key={item.id}
@@ -1397,11 +1398,16 @@ export const CourseDetailPage: React.FC = () => {
         description="Review your course details below to unlock immediate access."
         footer={
           <>
-            <Button variant="ghost" onClick={() => setEnrollModalOpen(false)}>
+            <Button variant="ghost" onClick={() => setEnrollModalOpen(false)} disabled={enrollMutation.isPending}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleConfirmEnrollment}>
-              Confirm enrollment
+            <Button
+              variant="primary"
+              onClick={() => void handleConfirmEnrollment()}
+              loading={enrollMutation.isPending}
+              disabled={enrollMutation.isPending}
+            >
+              {enrollMutation.isPending ? 'Enrolling...' : 'Confirm enrollment'}
             </Button>
           </>
         }
@@ -1468,11 +1474,16 @@ export const CourseDetailPage: React.FC = () => {
         description={`Share your experience with ${course.title}`}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setReviewModalOpen(false)}>
+            <Button variant="ghost" onClick={() => setReviewModalOpen(false)} disabled={createReviewMutation.isPending}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleSubmitReview}>
-              Publish review
+            <Button
+              variant="primary"
+              onClick={handleSubmitReview}
+              loading={createReviewMutation.isPending}
+              disabled={createReviewMutation.isPending}
+            >
+              {createReviewMutation.isPending ? 'Publishing...' : 'Publish review'}
             </Button>
           </>
         }
