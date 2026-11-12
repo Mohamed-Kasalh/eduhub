@@ -1246,7 +1246,7 @@ in_progress ──(POST /exam-attempts/:id/submit)──▶ submitted
 - **Success `200 OK`**: `{ "affectedCount": 2, "affectedIds": ["user-stu-2", "user-stu-3"], "action": "suspend" }`
 - **Errors**: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `422 VALIDATION_ERROR`.
 
-### `POST /admin/instructor-applications/:id/approve` and `/reject`
+### `POST /admin/instructor-applications/:id/approve`, `POST /admin/instructor-applications/:id/reject`
 - **Roles**: `admin`
 - **Success `200 OK`**: `{ "success": true, "message": "Instructor application processed." }`
 - **Errors**: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 APPLICATION_NOT_FOUND`.
@@ -1257,7 +1257,7 @@ in_progress ──(POST /exam-attempts/:id/submit)──▶ submitted
 - **Success `200 OK`**: Paginated `{ data: CourseDto[], meta }`.
 - **Errors**: `401 UNAUTHORIZED`, `403 FORBIDDEN`.
 
-### `POST /admin/courses/:id/approve`, `/reject`, `/unpublish`, `PATCH /admin/courses/:id/feature`, `PATCH /admin/courses/:id/status`, `DELETE /admin/courses/:id`
+### `POST /admin/courses/:id/approve`, `POST /admin/courses/:id/reject`, `POST /admin/courses/:id/unpublish`, `PATCH /admin/courses/:id/feature`, `PATCH /admin/courses/:id/status`, `DELETE /admin/courses/:id`
 - **Roles**: `admin`
 - **Payloads**:
   - `POST .../approve`: none -> sets `published`, notifies instructor

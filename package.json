@@ -9,9 +9,10 @@
     "preview": "vite preview",
     "format": "oxfmt",
     "check:no-mock-imports": "node scripts/check-no-mock-imports.mjs",
+    "check:contract": "node scripts/check-contract.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "pnpm check:no-mock-imports && pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm check:no-mock-imports && pnpm check:contract && pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",
