@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   AlertCircle,
@@ -348,7 +348,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
   }, []);
 
   // Build metadata DTO from current wizard form
-  const buildMetadataPayload = () => {
+  const buildMetadataPayload = useCallback(() => {
     const parsedPrice = pricingMode === 'free' ? 0 : Math.max(0, Number(priceAmount) || 0);
     const parsedOriginal =
       pricingMode === 'paid' && hasDiscount && Number(originalPriceAmount) > parsedPrice
@@ -372,7 +372,21 @@ export const InstructorCreateCoursePage: React.FC = () => {
       originalPrice: parsedOriginal ? { amount: parsedOriginal, currency: 'USD' } : null,
       isFree: pricingMode === 'free',
     };
-  };
+  }, [
+    categoryId,
+    coverPreviewUrl,
+    description,
+    hasDiscount,
+    language,
+    level,
+    originalPriceAmount,
+    priceAmount,
+    pricingMode,
+    subtitle,
+    tags,
+    title,
+    videoUrl,
+  ]);
 
   const buildCurriculumPayload = () => ({
     sections: sections.map((sec, sIdx) => ({
@@ -393,6 +407,8 @@ export const InstructorCreateCoursePage: React.FC = () => {
     })),
   });
 
+  const { mutateAsync: updateCourseMutateAsync } = updateCourseMutation;
+
   // Real debounced autosave once a draft exists on the backend
   useEffect(() => {
     if (!hasUnsavedChanges || !draftCourseId || title.trim().length < 6) {
@@ -401,7 +417,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
     const timer = window.setTimeout(async () => {
       setAutosaveStatus('saving');
       try {
-        await updateCourseMutation.mutateAsync({
+        await updateCourseMutateAsync({
           courseId: draftCourseId,
           payload: buildMetadataPayload(),
           silent: true,
@@ -417,8 +433,7 @@ export const InstructorCreateCoursePage: React.FC = () => {
     }, 1200);
 
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasUnsavedChanges, draftCourseId, title, subtitle, categoryId, level, language, description, tags, pricingMode, priceAmount, hasDiscount, originalPriceAmount, coverPreviewUrl, videoUrl]);
+  }, [hasUnsavedChanges, draftCourseId, buildMetadataPayload, updateCourseMutateAsync]);
 
   // Real Cover Image Upload handler
   const uploadCoverFile = async (file: File) => {
