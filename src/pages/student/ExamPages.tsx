@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router';
 import {
   Clock,
@@ -17,7 +17,6 @@ import {
   Award,
   HelpCircle,
   LayoutGrid,
-  ShieldCheck,
   Loader2,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -29,17 +28,31 @@ import {
   AchievementStickerBadge,
   Breadcrumbs,
   Modal,
+  Skeleton,
+  EmptyState,
+  QueryErrorState,
 } from '../../components/ui';
 import { BrandLogo, CatMascot } from '../../components/brand/BrandLogo';
-import { useApp } from '../../context/AppContext';
-import { useAuth } from '../../context/AuthContext';
+import type { ExamAttemptResultDto, ExamAttemptStartDto } from '../../api/dto-types-bridge';
+import { isForbiddenError, isNotFoundError } from '../../api/errors';
 import {
-  COURSE_QUESTION_BANK,
-  DEFAULT_DEMO_ANSWERS,
-  BankExamQuestion,
-} from '../../data/examAndCertData';
-import { handleImageError } from '../../utils/imageFallback';
+  useAutosaveExamAnswersMutation,
+  useCourseExamAttempts,
+  useCourseExamOverview,
+  useExamAttemptResult,
+  useGenerateCertificateMutation,
+  useMyCertificates,
+  useStartExamAttemptMutation,
+  useSubmitExamAttemptMutation,
+} from '../../api/hooks/useExamsAndCertificates';
+import {
+  mapExamAttemptQuestionDtoToView,
+  mapExamAttemptResultDtoToView,
+  mapExamAttemptSummaryDtoToRecord,
+  type StudentExamQuestionView,
+} from '../../api/mappers';
 import { usePageTitle } from '../../hooks/usePageTitle';
+import { Forbidden403Page, NotFound404Page } from '../ErrorPages';
 
 function formatTimer(seconds: number): string {
   const safe = Math.max(0, Math.floor(seconds));
@@ -48,96 +61,153 @@ function formatTimer(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function areArraysEqual(a: number[], b: number[]): boolean {
-  if (a.length !== b.length) return false;
-  const sortedA = [...a].sort((x, y) => x - y);
-  const sortedB = [...b].sort((x, y) => x - y);
-  return sortedA.every((val, idx) => val === sortedB[idx]);
+function computeSecondsUntil(expiresAtIso: string): number {
+  const diffMs = new Date(expiresAtIso).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diffMs / 1000));
 }
 
+// ============================================================================
+// PART A.1 & A.2 — FINAL EXAM INTRO & ACTIVE TAKING WORKSPACE (/exam/:courseId)
+// ============================================================================
 export const ExamPage: React.FC = () => {
-  const { courseId } = useParams<{ courseId: string }>();
-  const [searchParams] = useSearchParams();
+  const { courseId = '' } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
-  const {
-    courses,
-    getCourseProgressStats,
-    completeAllCourseLessons,
-    examAttempts,
-    addExamAttempt,
-    setLastSubmittedAnswers,
-    addToast,
-  } = useApp();
 
-  const course = useMemo(
-    () => courses.find((c) => c.id === courseId) || courses[0],
-    [courses, courseId]
-  );
-  usePageTitle(`${course.title} Final Exam`);
+  const overviewQuery = useCourseExamOverview(courseId);
+  const attemptsQuery = useCourseExamAttempts(courseId);
+  const startAttemptMutation = useStartExamAttemptMutation(courseId);
+  const autosaveMutation = useAutosaveExamAnswersMutation();
+  const submitAttemptMutation = useSubmitExamAttemptMutation(courseId);
 
-  const courseStats = getCourseProgressStats(course.id);
-  const courseAttempts = useMemo(
-    () => examAttempts.filter((a) => a.courseId === course.id),
-    [examAttempts, course.id]
-  );
-  const attemptsUsed = Math.min(3, Math.max(1, courseAttempts.length));
+  const courseTitle = overviewQuery.data?.config.courseTitle ?? 'Certification Exam';
+  usePageTitle(`${courseTitle} Final Exam`);
 
-  // Phase: 'intro' or 'taking'
-  const [phase, setPhase] = useState<'intro' | 'taking'>(() =>
-    searchParams.get('mode') === 'taking' ? 'taking' : 'intro'
-  );
-
-  // Override for testing the locked vs unlocked intro state
-  const [introLockOverride, setIntroLockOverride] = useState<'auto' | 'unlocked' | 'locked'>(
-    'unlocked'
-  );
-
-  const isLessonsComplete =
-    introLockOverride === 'unlocked'
-      ? true
-      : introLockOverride === 'locked'
-      ? false
-      : courseStats.overallPercent === 100;
-
-  // Exam Taking State (20 questions from Question Bank)
-  // Default current question index to 6 ("Question 7 of 20") as highlighted in the spec, or 0 when starting fresh
-  const [currentIndex, setCurrentIndex] = useState<number>(6);
-  const [answers, setAnswers] = useState<Record<string, number[]>>(DEFAULT_DEMO_ANSWERS);
-  const [flaggedIds, setFlaggedIds] = useState<string[]>(['qb-4', 'qb-13']);
-  const [secondsLeft, setSecondsLeft] = useState<number>(26 * 60 + 18); // 26:18 remaining (out of 30:00)
-  const [autosaveState, setAutosaveState] = useState<'saved' | 'saving'>('saved');
+  const [activeAttempt, setActiveAttempt] = useState<ExamAttemptStartDto | null>(null);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [answers, setAnswers] = useState<Record<string, number[]>>({});
+  const [flaggedIds, setFlaggedIds] = useState<string[]>([]);
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
+  const [autosaveState, setAutosaveState] = useState<'saved' | 'saving' | 'error'>('saved');
   const [lastSavedTime, setLastSavedTime] = useState<string>('Just now');
+  const [autoSubmittedResult, setAutoSubmittedResult] = useState<ExamAttemptResultDto | null>(null);
 
-  // Modals & Mobile Navigator Sheet
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [timeUpModalOpen, setTimeUpModalOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const activeQuestion: BankExamQuestion = COURSE_QUESTION_BANK[currentIndex];
-  const isUnderFiveMinutes = secondsLeft > 0 && secondsLeft < 300;
+  // Refs prevent stale closures inside autosave timers and expiration handlers
+  const dirtyRef = useRef(false);
+  const answersRef = useRef<Record<string, number[]>>({});
+  const flaggedRef = useRef<string[]>([]);
+  const attemptRef = useRef<ExamAttemptStartDto | null>(null);
+  const hasAutoSubmittedRef = useRef(false);
+  const autosaveMutateRef = useRef(autosaveMutation.mutateAsync);
+  const submitMutateRef = useRef(submitAttemptMutation.mutateAsync);
 
-  // Countdown timer effect when in 'taking' phase
   useEffect(() => {
-    if (phase !== 'taking') return;
-    const interval = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setTimeUpModalOpen(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [phase]);
+    answersRef.current = answers;
+  }, [answers]);
 
-  // Compute navigator summary counts
+  useEffect(() => {
+    flaggedRef.current = flaggedIds;
+  }, [flaggedIds]);
+
+  useEffect(() => {
+    attemptRef.current = activeAttempt;
+  }, [activeAttempt]);
+
+  useEffect(() => {
+    autosaveMutateRef.current = autosaveMutation.mutateAsync;
+  }, [autosaveMutation.mutateAsync]);
+
+  useEffect(() => {
+    submitMutateRef.current = submitAttemptMutation.mutateAsync;
+  }, [submitAttemptMutation.mutateAsync]);
+
+  const flushAutosave = useCallback(async () => {
+    const currentAttempt = attemptRef.current;
+    if (!currentAttempt || !dirtyRef.current) return;
+    dirtyRef.current = false;
+    setAutosaveState('saving');
+    try {
+      await autosaveMutateRef.current({
+        attemptId: currentAttempt.attemptId,
+        payload: {
+          answers: answersRef.current,
+          flaggedQuestionIds: flaggedRef.current,
+        },
+      });
+      setAutosaveState('saved');
+      setLastSavedTime('Just now');
+    } catch {
+      dirtyRef.current = true;
+      setAutosaveState('error');
+    }
+  }, []);
+
+  // Debounced autosave (1.5s after change) + periodic safety sync every 15s while active
+  useEffect(() => {
+    if (!activeAttempt) return;
+    if (!dirtyRef.current) return;
+
+    const debounceTimer = window.setTimeout(() => {
+      void flushAutosave();
+    }, 1500);
+
+    return () => window.clearTimeout(debounceTimer);
+  }, [activeAttempt, answers, flaggedIds, flushAutosave]);
+
+  useEffect(() => {
+    if (!activeAttempt) return;
+    const interval = window.setInterval(() => {
+      if (dirtyRef.current) {
+        void flushAutosave();
+      }
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [activeAttempt, flushAutosave]);
+
+  // Synchronize live countdown timer against server `expiresAt`
+  useEffect(() => {
+    if (!activeAttempt) return;
+
+    const tick = () => {
+      const remaining = computeSecondsUntil(activeAttempt.expiresAt);
+      setSecondsLeft(remaining);
+      if (remaining <= 0 && !hasAutoSubmittedRef.current) {
+        hasAutoSubmittedRef.current = true;
+        setTimeUpModalOpen(true);
+        void (async () => {
+          try {
+            await flushAutosave();
+            const res = await submitMutateRef.current({
+              attemptId: activeAttempt.attemptId,
+            });
+            setAutoSubmittedResult(res);
+          } catch {
+            // Submit button in time-up modal allows manual retry if submission fails
+          }
+        })();
+      }
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeAttempt, flushAutosave]);
+
+  const mappedQuestions = useMemo<StudentExamQuestionView[]>(() => {
+    if (!activeAttempt) return [];
+    return activeAttempt.questions.map(mapExamAttemptQuestionDtoToView);
+  }, [activeAttempt]);
+
+  const activeQuestion = mappedQuestions[currentIndex] ?? mappedQuestions[0];
+
   const summaryCounts = useMemo(() => {
-    const total = COURSE_QUESTION_BANK.length;
+    const total = mappedQuestions.length;
     let answered = 0;
-    COURSE_QUESTION_BANK.forEach((q) => {
+    mappedQuestions.forEach((q) => {
       if ((answers[q.id]?.length ?? 0) > 0) {
         answered += 1;
       }
@@ -145,84 +215,355 @@ export const ExamPage: React.FC = () => {
     const unanswered = total - answered;
     const flagged = flaggedIds.length;
     return { total, answered, unanswered, flagged };
-  }, [answers, flaggedIds]);
+  }, [mappedQuestions, answers, flaggedIds]);
 
-  const triggerAutosaveFeedback = () => {
-    setAutosaveState('saving');
-    setTimeout(() => {
-      setAutosaveState('saved');
-      setLastSavedTime('Just now');
-    }, 350);
+  const questionTypeAnchors = useMemo(() => {
+    const singleIdx = mappedQuestions.findIndex((q) => q.type === 'single');
+    const multipleIdx = mappedQuestions.findIndex((q) => q.type === 'multiple');
+    const booleanIdx = mappedQuestions.findIndex((q) => q.type === 'boolean');
+    return { singleIdx, multipleIdx, booleanIdx };
+  }, [mappedQuestions]);
+
+  const handleStartExam = async () => {
+    if (startAttemptMutation.isPending) return;
+    const started = await startAttemptMutation.mutateAsync();
+    dirtyRef.current = false;
+    hasAutoSubmittedRef.current = false;
+    answersRef.current = started.answers;
+    flaggedRef.current = started.flaggedQuestionIds;
+    attemptRef.current = started;
+    setAnswers(started.answers);
+    setFlaggedIds(started.flaggedQuestionIds);
+    setCurrentIndex(0);
+    setAutoSubmittedResult(null);
+    setSecondsLeft(Math.min(started.remainingSeconds, computeSecondsUntil(started.expiresAt)));
+    setAutosaveState('saved');
+    setLastSavedTime('Just now');
+    setActiveAttempt(started);
   };
 
-  const handleSelectOption = (q: BankExamQuestion, optionIndex: number) => {
-    triggerAutosaveFeedback();
+  const handleSelectOption = (q: StudentExamQuestionView, optionIndex: number) => {
+    dirtyRef.current = true;
+    setAutosaveState('saving');
     setAnswers((prev) => {
       const existing = prev[q.id] || [];
-      if (q.type === 'multiple') {
-        const next = existing.includes(optionIndex)
-          ? existing.filter((i) => i !== optionIndex)
-          : [...existing, optionIndex];
-        return { ...prev, [q.id]: next };
-      }
-      // single choice or True/False
-      return { ...prev, [q.id]: [optionIndex] };
+      const next =
+        q.type === 'multiple'
+          ? existing.includes(optionIndex)
+            ? existing.filter((i) => i !== optionIndex)
+            : [...existing, optionIndex]
+          : [optionIndex];
+      const updated = { ...prev, [q.id]: next };
+      answersRef.current = updated;
+      return updated;
     });
   };
 
   const handleToggleFlag = (qId: string) => {
-    triggerAutosaveFeedback();
-    setFlaggedIds((prev) =>
-      prev.includes(qId) ? prev.filter((id) => id !== qId) : [...prev, qId]
-    );
+    dirtyRef.current = true;
+    setAutosaveState('saving');
+    setFlaggedIds((prev) => {
+      const updated = prev.includes(qId) ? prev.filter((id) => id !== qId) : [...prev, qId];
+      flaggedRef.current = updated;
+      return updated;
+    });
   };
 
-  const handleFinalizeAndSubmit = () => {
-    let correctCount = 0;
-    let wrongCount = 0;
-    let skippedCount = 0;
+  const handleFinalizeAndSubmit = async () => {
+    if (!activeAttempt || submitAttemptMutation.isPending) return;
+    if (autoSubmittedResult) {
+      setTimeUpModalOpen(false);
+      navigate(`/exam/${courseId}/result?attemptId=${encodeURIComponent(autoSubmittedResult.id)}`);
+      return;
+    }
 
-    COURSE_QUESTION_BANK.forEach((q) => {
-      const userAns = answers[q.id] || [];
-      if (userAns.length === 0) {
-        skippedCount += 1;
-      } else if (areArraysEqual(userAns, q.correctIndices)) {
-        correctCount += 1;
-      } else {
-        wrongCount += 1;
-      }
+    await flushAutosave();
+    const graded = await submitAttemptMutation.mutateAsync({
+      attemptId: activeAttempt.attemptId,
     });
-
-    // Calculate score % (if default demo answers with 17/20 correct, display 86% as specified in prompt)
-    const rawPercent = Math.round((correctCount / COURSE_QUESTION_BANK.length) * 100);
-    const finalPercent = correctCount === 17 ? 86 : rawPercent;
-    const elapsedSeconds = Math.max(60, 30 * 60 - secondsLeft);
-    const elapsedMins = Math.floor(elapsedSeconds / 60);
-    const elapsedRem = elapsedSeconds % 60;
-
-    setLastSubmittedAnswers(answers);
-    addExamAttempt({
-      courseId: course.id,
-      date: 'Just now',
-      scorePercent: finalPercent,
-      correctCount,
-      wrongCount,
-      skippedCount,
-      timeTaken: `${elapsedMins}m ${String(elapsedRem).padStart(2, '0')}s`,
-      passed: finalPercent >= 60,
-    });
-
     setSubmitModalOpen(false);
     setTimeUpModalOpen(false);
-    addToast({
-      title: 'Exam submitted and graded!',
-      message: `You scored ${finalPercent}% (${correctCount} of 20 correct).`,
-      variant: finalPercent >= 60 ? 'success' : 'warning',
-    });
-    navigate(`/exam/${course.id}/result`);
+    navigate(`/exam/${courseId}/result?attemptId=${encodeURIComponent(graded.id)}`);
   };
 
-  // Question Navigator Grid component (reused in Desktop Right Column & Mobile Bottom Sheet)
+  if (!courseId) {
+    return <NotFound404Page />;
+  }
+
+  if (overviewQuery.isLoading) {
+    return (
+      <div className="min-h-screen bg-[#FAF8FF] px-4 sm:px-6 py-10">
+        <div className="max-w-[1000px] mx-auto space-y-6">
+          <Skeleton variant="text" className="w-64 h-6" />
+          <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-8 space-y-6">
+            <Skeleton variant="card" className="h-32 w-full rounded-[12px]" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <Skeleton key={idx} variant="card" className="h-28 rounded-[12px]" />
+              ))}
+            </div>
+            <Skeleton variant="card" className="h-20 w-full rounded-[12px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (overviewQuery.isError) {
+    if (isNotFoundError(overviewQuery.error)) {
+      return <NotFound404Page />;
+    }
+    if (isForbiddenError(overviewQuery.error)) {
+      return <Forbidden403Page requiredRoles={['student']} />;
+    }
+    return (
+      <div className="min-h-screen bg-[#FAF8FF] flex items-center justify-center px-4 py-12">
+        <div className="max-w-lg w-full">
+          <QueryErrorState
+            error={overviewQuery.error}
+            title="Unable to load exam overview"
+            onRetry={() => void overviewQuery.refetch()}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const overview = overviewQuery.data;
+  if (!overview) {
+    return <NotFound404Page />;
+  }
+
+  const { config, eligibility } = overview;
+  const durationMinutes = Math.max(1, Math.round(config.durationSeconds / 60));
+  const previousAttempts = (attemptsQuery.data?.data ?? []).map(mapExamAttemptSummaryDtoToRecord);
+
+  // ============================================================================
+  // RENDER PHASE 1: EXAM INTRO SCREEN
+  // ============================================================================
+  if (!activeAttempt || !activeQuestion) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#FAF8FF] text-[#1E1B2E]">
+        <header className="sticky top-0 z-30 h-16 bg-white border-b border-[#E6E1F5] px-4 sm:px-8 flex items-center justify-between">
+          <BrandLogo size="sm" />
+          <div className="flex items-center gap-3">
+            {previousAttempts.length > 0 && (
+              <Link to={`/exam/${courseId}/result`}>
+                <Button variant="ghost" size="sm">
+                  View past results
+                </Button>
+              </Link>
+            )}
+            <Link to={`/student/progress/${courseId}`}>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<ChevronLeft className="w-4 h-4" />}
+              >
+                Back to course
+              </Button>
+            </Link>
+          </div>
+        </header>
+
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 max-w-[1000px] w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 focus:outline-none"
+        >
+          <Breadcrumbs
+            items={[
+              { label: 'My courses', to: '/student/courses' },
+              { label: config.courseTitle, to: `/student/progress/${courseId}` },
+              { label: 'Final exam intro' },
+            ]}
+          />
+
+          <div className="rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-md overflow-hidden">
+            <div className="bg-[#F3EFFF] border-b border-[#E6E1F5] p-6 sm:p-8 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusChip
+                  label="Final certification exam"
+                  variant="primary"
+                  className="bg-white"
+                />
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E6E1F5] text-[12px] font-bold text-[#3F2A9E]">
+                  <Sparkles className="w-3.5 h-3.5 text-[#F59E3B]" />
+                  {config.shuffleQuestions
+                    ? 'Questions are randomly selected from the Question Bank'
+                    : 'Curated certification assessment'}
+                </span>
+              </div>
+
+              <h1 className="text-[32px] sm:text-[38px] font-display font-bold text-[#1E1B2E] leading-tight">
+                {config.title}
+              </h1>
+              <p className="text-[16px] text-[#5F5B75] max-w-2xl">
+                Validate your mastery of <strong>{config.courseTitle}</strong> to unlock your
+                official EduHub Certificate of Completion.
+              </p>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-8">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  {
+                    label: 'Total questions',
+                    value: `${config.totalQuestions} questions`,
+                    sub: 'Single, multiple & T/F',
+                    icon: <HelpCircle className="w-5 h-5 text-[#6D4AE0]" />,
+                  },
+                  {
+                    label: 'Time limit',
+                    value: `${durationMinutes} min`,
+                    sub: 'Auto-submits at 00:00',
+                    icon: <Clock className="w-5 h-5 text-[#F59E3B]" />,
+                  },
+                  {
+                    label: 'Pass score',
+                    value: `${config.passingScorePercent}%`,
+                    sub: 'Minimum required to pass',
+                    icon: <Award className="w-5 h-5 text-[#16A34A]" />,
+                  },
+                  {
+                    label: 'Attempts',
+                    value: `${eligibility.attemptsUsed}/${config.attemptsAllowed}`,
+                    sub: `${eligibility.attemptsRemaining} retakes remaining`,
+                    icon: <RotateCcw className="w-5 h-5 text-[#2563EB]" />,
+                  },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    className="rounded-[12px] bg-[#FAF8FF] border border-[#E6E1F5] p-4 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-semibold text-[#5F5B75]">
+                        {card.label}
+                      </span>
+                      <div className="w-8 h-8 rounded-[8px] bg-white border border-[#E6E1F5] flex items-center justify-center">
+                        {card.icon}
+                      </div>
+                    </div>
+                    <p className="font-display font-bold text-[24px] text-[#1E1B2E] leading-none">
+                      {card.value}
+                    </p>
+                    <p className="text-[12px] text-[#5F5B75]">{card.sub}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                <h2 className="text-[22px] font-display font-bold text-[#1E1B2E]">
+                  Exam rules & guidelines
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {[
+                    'Questions are drawn dynamically from the instructor Question Bank for each attempt.',
+                    'Includes single-choice, multiple-choice (select all that apply), and True/False items.',
+                    'Your selected answers are autosaved continuously while you navigate.',
+                    'Use "Flag for review" to mark uncertain questions and jump back via the Question Navigator.',
+                    'The countdown timer turns red when under 5 minutes remain and auto-submits at 00:00.',
+                    `Scoring ${config.passingScorePercent}% or higher (with 100% completed lessons) immediately unlocks your verified certificate.`,
+                  ].map((rule, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2.5 p-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[14px] text-[#1E1B2E]"
+                    >
+                      <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0 mt-0.5" />
+                      <span>{rule}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {!eligibility.eligible ? (
+                <div className="rounded-[12px] bg-[#FFFBEB] border-2 border-[#F59E0B]/50 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-[10px] bg-[#FEF3C7] text-[#B45309] flex items-center justify-center shrink-0">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="font-display font-bold text-[18px] text-[#1E1B2E]">
+                        Exam locked — Eligibility requirements not met
+                      </p>
+                      <p className="text-[14px] text-[#5F5B75]">
+                        {eligibility.reason ||
+                          'Complete every required lesson and remain within attempt limits to begin.'}{' '}
+                        Progress:{' '}
+                        <strong className="text-[#1E1B2E]">
+                          {eligibility.lessonsCompleted} of {eligibility.totalLessons} lessons (
+                          {eligibility.courseProgressPercent}%)
+                        </strong>
+                        .
+                      </p>
+                    </div>
+                  </div>
+                  {eligibility.courseProgressPercent < 100 ? (
+                    <Link to={`/student/progress/${courseId}`} className="shrink-0">
+                      <Button variant="secondary" size="sm" className="bg-white">
+                        Finish remaining lessons
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link to={`/exam/${courseId}/result`} className="shrink-0">
+                      <Button variant="secondary" size="sm" className="bg-white">
+                        View exam results
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-[12px] bg-[#16A34A]/8 border border-[#16A34A]/30 p-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0" />
+                    <p className="text-[14px] font-semibold text-[#1E1B2E]">
+                      Eligibility verified: 100% of course lessons completed ({eligibility.attemptsRemaining}{' '}
+                      {eligibility.attemptsRemaining === 1 ? 'attempt' : 'attempts'} remaining).
+                    </p>
+                  </div>
+                  <StatusChip label="Unlocked" variant="success" />
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-[#E6E1F5] flex flex-wrap items-center justify-between gap-4">
+                <Link to={`/student/progress/${courseId}`}>
+                  <Button variant="ghost">Return to course progress</Button>
+                </Link>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    disabled={!eligibility.eligible || startAttemptMutation.isPending}
+                    loading={startAttemptMutation.isPending}
+                    leftIcon={
+                      !eligibility.eligible ? (
+                        <Lock className="w-4 h-4" />
+                      ) : (
+                        <FileCheck2 className="w-5 h-5" />
+                      )
+                    }
+                    onClick={() => void handleStartExam()}
+                  >
+                    {startAttemptMutation.isPending ? 'Starting exam...' : 'Start exam'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // RENDER PHASE 2: ACTIVE EXAM TAKING WORKSPACE
+  // ============================================================================
+  const currentSelected = answers[activeQuestion.id] || [];
+  const isCurrentFlagged = flaggedIds.includes(activeQuestion.id);
+  const isUnderFiveMinutes = secondsLeft > 0 && secondsLeft < 300;
+  const activeDurationMins = Math.max(1, Math.round(activeAttempt.durationSeconds / 60));
+
   const renderNavigatorGrid = () => (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -234,7 +575,6 @@ export const ExamPage: React.FC = () => {
         </span>
       </div>
 
-      {/* Color Legend: Answered, Flagged, Unanswered, Current */}
       <div className="grid grid-cols-2 gap-2 text-[12px] text-[#5F5B75] p-3 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5]">
         <div className="flex items-center gap-2">
           <span className="w-3.5 h-3.5 rounded-[4px] bg-[#6D4AE0] inline-block" />
@@ -254,9 +594,8 @@ export const ExamPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 20-Question Numbered Grid */}
       <div className="grid grid-cols-5 gap-2">
-        {COURSE_QUESTION_BANK.map((q, idx) => {
+        {mappedQuestions.map((q, idx) => {
           const isCurrent = idx === currentIndex;
           const isAnswered = (answers[q.id]?.length ?? 0) > 0;
           const isFlagged = flaggedIds.includes(q.id);
@@ -298,315 +637,40 @@ export const ExamPage: React.FC = () => {
       <div className="pt-3 border-t border-[#E6E1F5] space-y-2.5">
         <Button
           variant="primary"
-          size="lg"
+          size="md"
           fullWidth
+          disabled={submitAttemptMutation.isPending}
           onClick={() => {
             setMobileNavOpen(false);
             setSubmitModalOpen(true);
           }}
         >
-          Submit exam
+          Finish & submit exam
         </Button>
         <p className="text-[11px] text-center text-[#5F5B75]">
-          You can review and change any answer before final submission.
+          {autosaveState === 'saving'
+            ? 'Saving your answers...'
+            : autosaveState === 'error'
+              ? 'Offline changes queued for sync.'
+              : 'All progress is continuously autosaved.'}
         </p>
       </div>
     </div>
   );
 
-  // ============================================================================
-  // RENDER PHASE 1: EXAM INTRO SCREEN
-  // ============================================================================
-  if (phase === 'intro') {
-    return (
-      <div className="min-h-screen flex flex-col bg-[#FAF8FF] text-[#1E1B2E]">
-        {/* Slim Top Bar on White Surface */}
-        <header className="sticky top-0 z-30 h-16 bg-white border-b border-[#E6E1F5] px-4 sm:px-6 flex items-center justify-between gap-4 shadow-purple-sm">
-          <div className="flex items-center gap-3">
-            <BrandLogo size="sm" showText />
-            <span className="h-6 w-px bg-[#E6E1F5] hidden sm:block" />
-            <span className="text-[14px] font-bold text-[#5F5B75] hidden sm:inline">
-              Online Certification Assessment
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            {/* Quick interactive state switcher for testing Intro Ready, Intro Locked, and Taking */}
-            <div className="hidden md:inline-flex items-center gap-1 p-1 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5]">
-              <span className="text-[11px] font-bold text-[#5F5B75] px-2 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-[#6D4AE0]" />
-                Preview:
-              </span>
-              <button
-                type="button"
-                onClick={() => setIntroLockOverride('unlocked')}
-                className={`px-2.5 py-1 rounded-[7px] text-[11px] font-bold cursor-pointer ${
-                  isLessonsComplete
-                    ? 'bg-[#6D4AE0] text-white'
-                    : 'text-[#5F5B75] hover:text-[#1E1B2E]'
-                }`}
-              >
-                Ready (100% lessons)
-              </button>
-              <button
-                type="button"
-                onClick={() => setIntroLockOverride('locked')}
-                className={`px-2.5 py-1 rounded-[7px] text-[11px] font-bold cursor-pointer ${
-                  !isLessonsComplete
-                    ? 'bg-[#6D4AE0] text-white'
-                    : 'text-[#5F5B75] hover:text-[#1E1B2E]'
-                }`}
-              >
-                Locked (&lt;100% lessons)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrentIndex(6);
-                  setPhase('taking');
-                }}
-                className="px-2.5 py-1 rounded-[7px] text-[11px] font-bold text-[#6D4AE0] hover:bg-[#F3EFFF] cursor-pointer"
-              >
-                Exam taking (Q7/20)
-              </button>
-            </div>
-
-            <Link to={`/student/progress/${course.id}`}>
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<ChevronLeft className="w-4 h-4" />}
-              >
-                Back to course
-              </Button>
-            </Link>
-          </div>
-        </header>
-
-        <main id="main-content" tabIndex={-1} className="flex-1 max-w-[1000px] w-full mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8 focus:outline-none">
-          <Breadcrumbs
-            items={[
-              { label: 'My courses', to: '/student/courses' },
-              { label: course.title, to: `/student/progress/${course.id}` },
-              { label: 'Final exam intro' },
-            ]}
-          />
-
-          <div className="rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-md overflow-hidden">
-            {/* Intro Header Band */}
-            <div className="bg-[#F3EFFF] border-b border-[#E6E1F5] p-6 sm:p-8 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusChip
-                    label="Final certification exam"
-                    variant="primary"
-                    className="bg-white"
-                  />
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E6E1F5] text-[12px] font-bold text-[#3F2A9E]">
-                    <Sparkles className="w-3.5 h-3.5 text-[#F59E3B]" />
-                    Questions are randomly selected from the Question Bank
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setIntroLockOverride(isLessonsComplete ? 'locked' : 'unlocked')
-                  }
-                  className="md:hidden text-[12px] font-bold text-[#6D4AE0] underline cursor-pointer"
-                >
-                  {isLessonsComplete ? 'Preview locked state' : 'Preview unlocked state'}
-                </button>
-              </div>
-
-              <h1 className="text-[32px] sm:text-[38px] font-display font-bold text-[#1E1B2E] leading-tight">
-                {course.title}
-              </h1>
-              <p className="text-[16px] text-[#5F5B75] max-w-2xl">
-                Validate your mastery across all 4 course sections to unlock your official
-                EduHub Certificate of Completion.
-              </p>
-            </div>
-
-            <div className="p-6 sm:p-8 space-y-8">
-              {/* 4 Info Cards: 20 questions, 30 min, pass score 60%, attempts 1/3 */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  {
-                    label: 'Total questions',
-                    value: '20 questions',
-                    sub: 'Single, multiple & T/F',
-                    icon: <HelpCircle className="w-5 h-5 text-[#6D4AE0]" />,
-                  },
-                  {
-                    label: 'Time limit',
-                    value: '30 min',
-                    sub: 'Auto-submits at 00:00',
-                    icon: <Clock className="w-5 h-5 text-[#F59E3B]" />,
-                  },
-                  {
-                    label: 'Pass score',
-                    value: '60%',
-                    sub: '12+ correct to pass',
-                    icon: <Award className="w-5 h-5 text-[#16A34A]" />,
-                  },
-                  {
-                    label: 'Attempts',
-                    value: `${attemptsUsed}/3`,
-                    sub: `${3 - attemptsUsed} retakes remaining`,
-                    icon: <RotateCcw className="w-5 h-5 text-[#2563EB]" />,
-                  },
-                ].map((card) => (
-                  <div
-                    key={card.label}
-                    className="rounded-[12px] bg-[#FAF8FF] border border-[#E6E1F5] p-4 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] font-semibold text-[#5F5B75]">
-                        {card.label}
-                      </span>
-                      <div className="w-8 h-8 rounded-[8px] bg-white border border-[#E6E1F5] flex items-center justify-center">
-                        {card.icon}
-                      </div>
-                    </div>
-                    <p className="font-display font-bold text-[24px] text-[#1E1B2E] leading-none">
-                      {card.value}
-                    </p>
-                    <p className="text-[12px] text-[#5F5B75]">{card.sub}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Exam Rules Checklist */}
-              <div className="space-y-3">
-                <h2 className="text-[22px] font-display font-bold text-[#1E1B2E]">
-                  Exam rules & guidelines
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {[
-                    'Questions are randomly selected from the instructor Question Bank for each attempt.',
-                    'Includes single-choice, multiple-choice (select all that apply), and True/False items.',
-                    'Your selected answers are autosaved continuously as you navigate between questions.',
-                    'Use "Flag for review" to mark uncertain questions and jump back via the Question Navigator.',
-                    'The countdown timer turns red when under 5 minutes remain and auto-submits at 00:00.',
-                    'Scoring 60% or higher (with 100% completed lessons) immediately unlocks your verified certificate.',
-                  ].map((rule, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-2.5 p-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[14px] text-[#1E1B2E]"
-                    >
-                      <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0 mt-0.5" />
-                      <span>{rule}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Disabled state with explanation if lessons are not 100% complete */}
-              {!isLessonsComplete ? (
-                <div className="rounded-[12px] bg-[#FFFBEB] border-2 border-[#F59E0B]/50 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-[10px] bg-[#FEF3C7] text-[#B45309] flex items-center justify-center shrink-0">
-                      <Lock className="w-5 h-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="font-display font-bold text-[18px] text-[#1E1B2E]">
-                        Exam locked — Lessons are not 100% complete
-                      </p>
-                      <p className="text-[14px] text-[#5F5B75]">
-                        You have completed{' '}
-                        <strong className="text-[#1E1B2E]">
-                          {courseStats.completedLessons} of {courseStats.totalLessons} lessons (
-                          {courseStats.overallPercent}%)
-                        </strong>
-                        . Every lesson must reach at least 90% watched before you can start the
-                        final certification exam.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="shrink-0 bg-white"
-                    onClick={() => {
-                      completeAllCourseLessons(course.id);
-                      setIntroLockOverride('unlocked');
-                      addToast({
-                        title: '100% of lessons completed!',
-                        message: 'The final certification exam is now unlocked.',
-                        variant: 'success',
-                      });
-                    }}
-                  >
-                    Complete 100% lessons now
-                  </Button>
-                </div>
-              ) : (
-                <div className="rounded-[12px] bg-[#16A34A]/8 border border-[#16A34A]/30 p-4 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="w-5 h-5 text-[#16A34A] shrink-0" />
-                    <p className="text-[14px] font-semibold text-[#1E1B2E]">
-                      Eligibility verified: 100% of course lessons completed. You are ready to
-                      start the exam.
-                    </p>
-                  </div>
-                  <StatusChip label="Unlocked" variant="success" />
-                </div>
-              )}
-
-              {/* Bottom Action Row */}
-              <div className="pt-4 border-t border-[#E6E1F5] flex flex-wrap items-center justify-between gap-4">
-                <Link to={`/student/progress/${course.id}`}>
-                  <Button variant="ghost">Return to course progress</Button>
-                </Link>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    disabled={!isLessonsComplete}
-                    leftIcon={
-                      !isLessonsComplete ? (
-                        <Lock className="w-4 h-4" />
-                      ) : (
-                        <FileCheck2 className="w-5 h-5" />
-                      )
-                    }
-                    onClick={() => {
-                      setCurrentIndex(6); // Open at Question 7 of 20 as highlighted in spec
-                      setPhase('taking');
-                    }}
-                  >
-                    Start exam
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  // ============================================================================
-  // RENDER PHASE 2: EXAM TAKING (Focused, no sidebar)
-  // ============================================================================
-  const currentSelected = answers[activeQuestion.id] || [];
-  const isCurrentFlagged = flaggedIds.includes(activeQuestion.id);
-
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF8FF] text-[#1E1B2E] pb-20 lg:pb-10">
-      {/* FOCUSED EXAM TOP BAR (No sidebar, Logo on white, Exam title, Countdown timer turning red <5m, "Question 7 of 20", Autosave) */}
       <header className="sticky top-0 z-30 h-16 bg-white border-b border-[#E6E1F5] px-4 sm:px-6 flex items-center justify-between gap-3 shadow-purple-sm">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo size="sm" showText={false} />
           <div className="h-6 w-px bg-[#E6E1F5] hidden sm:block" />
           <div className="min-w-0">
             <h1 className="font-display font-bold text-[16px] sm:text-[18px] text-[#1E1B2E] truncate">
-              {course.title} — Final Exam
+              {config.courseTitle} — Final Exam
             </h1>
             <div className="flex items-center gap-2 text-[12px] text-[#5F5B75]">
               <span className="font-bold text-[#6D4AE0]">
-                Question {activeQuestion.number} of {COURSE_QUESTION_BANK.length}
+                Question {activeQuestion.number} of {mappedQuestions.length}
               </span>
               <span>•</span>
               <span className="inline-flex items-center gap-1 text-[#16A34A] font-semibold">
@@ -614,6 +678,11 @@ export const ExamPage: React.FC = () => {
                   <>
                     <Loader2 className="w-3 h-3 animate-spin text-[#6D4AE0]" />
                     <span className="text-[#6D4AE0]">Autosaving...</span>
+                  </>
+                ) : autosaveState === 'error' ? (
+                  <>
+                    <AlertCircle className="w-3.5 h-3.5 text-[#DC2626]" />
+                    <span className="text-[#DC2626]">Sync delayed</span>
                   </>
                 ) : (
                   <>
@@ -626,32 +695,7 @@ export const ExamPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Center/Right: Countdown Timer (turns red under 5 min) + Quick Timer Test Controls + Exit */}
         <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-          {/* Quick Demo Controls for Red Timer (<5 min) & Time-Up Modal */}
-          <div className="hidden xl:inline-flex items-center gap-1 p-1 rounded-[8px] bg-[#FAF8FF] border border-[#E6E1F5] text-[11px]">
-            <button
-              type="button"
-              onClick={() => setSecondsLeft(285)} // 04:45 (< 5 min -> red timer!)
-              className="px-2 py-1 rounded bg-white hover:bg-[#FEF2F2] text-[#DC2626] font-bold cursor-pointer"
-              title="Set timer to 04:45 to preview red warning state"
-            >
-              Test &lt;5m red
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSecondsLeft(0);
-                setTimeUpModalOpen(true);
-              }}
-              className="px-2 py-1 rounded bg-white hover:bg-[#F3EFFF] text-[#6D4AE0] font-bold cursor-pointer"
-              title="Simulate timer reaching 00:00"
-            >
-              Test time-up
-            </button>
-          </div>
-
-          {/* Countdown Timer Pill */}
           <div
             className={`px-3.5 py-1.5 rounded-[10px] border font-display font-bold text-[18px] sm:text-[20px] inline-flex items-center gap-2 transition-colors tabular-nums ${
               isUnderFiveMinutes || secondsLeft === 0
@@ -659,16 +703,12 @@ export const ExamPage: React.FC = () => {
                 : 'bg-[#F3EFFF] border-[#E6E1F5] text-[#3F2A9E]'
             }`}
             title={
-              isUnderFiveMinutes
-                ? 'Less than 5 minutes remaining!'
-                : 'Exam countdown timer'
+              isUnderFiveMinutes ? 'Less than 5 minutes remaining!' : 'Exam countdown timer'
             }
           >
             <Clock
               className={`w-4 h-4 ${
-                isUnderFiveMinutes || secondsLeft === 0
-                  ? 'text-[#DC2626]'
-                  : 'text-[#6D4AE0]'
+                isUnderFiveMinutes || secondsLeft === 0 ? 'text-[#DC2626]' : 'text-[#6D4AE0]'
               }`}
             />
             <span>{formatTimer(secondsLeft)}</span>
@@ -685,68 +725,77 @@ export const ExamPage: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN FOCUSED EXAM WORKSPACE */}
-      <main id="main-content" tabIndex={-1} className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start focus:outline-none">
-        {/* LEFT 8 COLS: QUESTION CARD */}
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-[1200px] w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start focus:outline-none"
+      >
         <div className="lg:col-span-8 space-y-6">
-          {/* Quick Question Type Switcher Bar so reviewer can jump directly to Single, Multiple (Q7), or True/False (Q3) */}
-          <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-3 px-4 shadow-purple-sm flex flex-wrap items-center justify-between gap-2 text-[12px]">
-            <span className="font-bold text-[#5F5B75] flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#6D4AE0]" />
-              Jump to question type:
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setCurrentIndex(0)}
-                className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
-                  activeQuestion.type === 'single'
-                    ? 'bg-[#F3EFFF] text-[#6D4AE0]'
-                    : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
-                }`}
-              >
-                Single choice (Q1 + Image)
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentIndex(6)}
-                className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
-                  activeQuestion.id === 'qb-7'
-                    ? 'bg-[#F3EFFF] text-[#6D4AE0]'
-                    : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
-                }`}
-              >
-                Multiple choice (Q7 + Image)
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentIndex(2)}
-                className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
-                  activeQuestion.type === 'boolean'
-                    ? 'bg-[#F3EFFF] text-[#6D4AE0]'
-                    : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
-                }`}
-              >
-                True / False (Q3)
-              </button>
+          {(questionTypeAnchors.singleIdx >= 0 ||
+            questionTypeAnchors.multipleIdx >= 0 ||
+            questionTypeAnchors.booleanIdx >= 0) && (
+            <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-3 px-4 shadow-purple-sm flex flex-wrap items-center justify-between gap-2 text-[12px]">
+              <span className="font-bold text-[#5F5B75] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#6D4AE0]" />
+                Jump to question type:
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {questionTypeAnchors.singleIdx >= 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex(questionTypeAnchors.singleIdx)}
+                    className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
+                      activeQuestion.type === 'single'
+                        ? 'bg-[#F3EFFF] text-[#6D4AE0]'
+                        : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
+                    }`}
+                  >
+                    Single choice (Q{questionTypeAnchors.singleIdx + 1})
+                  </button>
+                )}
+                {questionTypeAnchors.multipleIdx >= 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex(questionTypeAnchors.multipleIdx)}
+                    className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
+                      activeQuestion.type === 'multiple'
+                        ? 'bg-[#F3EFFF] text-[#6D4AE0]'
+                        : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
+                    }`}
+                  >
+                    Multiple choice (Q{questionTypeAnchors.multipleIdx + 1})
+                  </button>
+                )}
+                {questionTypeAnchors.booleanIdx >= 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCurrentIndex(questionTypeAnchors.booleanIdx)}
+                    className={`px-2.5 py-1 rounded-[8px] font-bold cursor-pointer ${
+                      activeQuestion.type === 'boolean'
+                        ? 'bg-[#F3EFFF] text-[#6D4AE0]'
+                        : 'text-[#5F5B75] hover:bg-[#FAF8FF]'
+                    }`}
+                  >
+                    True / False (Q{questionTypeAnchors.booleanIdx + 1})
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Active Question Card */}
           <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 sm:p-8 shadow-purple-md space-y-6">
-            {/* Question Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E6E1F5]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-[#6D4AE0] text-white font-display font-bold text-[14px]">
-                  Question {activeQuestion.number} of {COURSE_QUESTION_BANK.length}
+                  Question {activeQuestion.number} of {mappedQuestions.length}
                 </span>
                 <StatusChip
                   label={
                     activeQuestion.type === 'multiple'
                       ? 'Multiple choice (Select all that apply)'
                       : activeQuestion.type === 'boolean'
-                      ? 'True / False'
-                      : 'Single choice'
+                        ? 'True / False'
+                        : 'Single choice'
                   }
                   variant="primary"
                 />
@@ -757,7 +806,6 @@ export const ExamPage: React.FC = () => {
                 />
               </div>
 
-              {/* Flag for review button */}
               <button
                 type="button"
                 onClick={() => handleToggleFlag(activeQuestion.id)}
@@ -776,7 +824,6 @@ export const ExamPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Section Tag & Question Text */}
             <div className="space-y-2">
               <p className="text-[12px] font-bold text-[#6D4AE0]">
                 {activeQuestion.sectionName}
@@ -786,13 +833,11 @@ export const ExamPage: React.FC = () => {
               </h2>
             </div>
 
-            {/* Optional Question Image */}
             {activeQuestion.imageUrl && (
               <figure className="rounded-[12px] overflow-hidden border border-[#E6E1F5] bg-[#FAF8FF]">
                 <img
                   src={activeQuestion.imageUrl}
                   alt={activeQuestion.imageCaption || 'Question reference diagram'}
-                  onError={handleImageError}
                   className="w-full h-48 sm:h-56 object-cover"
                 />
                 {activeQuestion.imageCaption && (
@@ -804,7 +849,6 @@ export const ExamPage: React.FC = () => {
               </figure>
             )}
 
-            {/* Options as Selectable Cards */}
             <div className="space-y-3">
               {activeQuestion.options.map((optText, oIdx) => {
                 const isSelected = currentSelected.includes(oIdx);
@@ -826,10 +870,9 @@ export const ExamPage: React.FC = () => {
                         : 'bg-white border-[#E6E1F5] hover:border-[#A78BFA] hover:bg-[#FAF8FF]'
                     }`}
                   >
-                    {/* Radio or Checkbox Indicator */}
                     <div
-                      className={`mt-0.5 w-7 h-7 rounded-${
-                        activeQuestion.type === 'multiple' ? '[8px]' : 'full'
+                      className={`mt-0.5 w-7 h-7 ${
+                        activeQuestion.type === 'multiple' ? 'rounded-[8px]' : 'rounded-full'
                       } flex items-center justify-center font-display font-bold text-[13px] shrink-0 transition-colors ${
                         isSelected
                           ? 'bg-[#6D4AE0] text-white'
@@ -842,9 +885,7 @@ export const ExamPage: React.FC = () => {
                     <div className="flex-1">
                       <p
                         className={`text-[15px] leading-relaxed ${
-                          isSelected
-                            ? 'font-bold text-[#1E1B2E]'
-                            : 'font-medium text-[#1E1B2E]'
+                          isSelected ? 'font-bold text-[#1E1B2E]' : 'font-medium text-[#1E1B2E]'
                         }`}
                       >
                         {optText}
@@ -855,7 +896,6 @@ export const ExamPage: React.FC = () => {
               })}
             </div>
 
-            {/* Question Card Bottom Controls: Flag for review, Previous, Next */}
             <div className="pt-5 border-t border-[#E6E1F5] flex flex-wrap items-center justify-between gap-3">
               <Button
                 variant="secondary"
@@ -883,15 +923,13 @@ export const ExamPage: React.FC = () => {
                   {isCurrentFlagged ? 'Unflag' : 'Flag for review'}
                 </Button>
 
-                {currentIndex < COURSE_QUESTION_BANK.length - 1 ? (
+                {currentIndex < mappedQuestions.length - 1 ? (
                   <Button
                     variant="primary"
                     size="md"
                     rightIcon={<ChevronRight className="w-4 h-4" />}
                     onClick={() =>
-                      setCurrentIndex((i) =>
-                        Math.min(COURSE_QUESTION_BANK.length - 1, i + 1)
-                      )
+                      setCurrentIndex((i) => Math.min(mappedQuestions.length - 1, i + 1))
                     }
                   >
                     Next
@@ -900,6 +938,7 @@ export const ExamPage: React.FC = () => {
                   <Button
                     variant="primary"
                     size="md"
+                    disabled={submitAttemptMutation.isPending}
                     onClick={() => setSubmitModalOpen(true)}
                   >
                     Finish & submit exam
@@ -910,13 +949,11 @@ export const ExamPage: React.FC = () => {
           </div>
         </div>
 
-        {/* RIGHT 4 COLS: QUESTION NAVIGATOR GRID (Desktop) */}
         <aside className="hidden lg:block lg:col-span-4 rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm sticky top-24">
           {renderNavigatorGrid()}
         </aside>
       </main>
 
-      {/* MOBILE FIXED BOTTOM BAR + BOTTOM-SHEET QUESTION NAVIGATOR (< lg) */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-[#E6E1F5] px-4 py-3 shadow-purple-lg flex items-center justify-between gap-3">
         <button
           type="button"
@@ -932,6 +969,7 @@ export const ExamPage: React.FC = () => {
         <Button
           variant="primary"
           size="md"
+          disabled={submitAttemptMutation.isPending}
           onClick={() => setSubmitModalOpen(true)}
         >
           Submit exam
@@ -964,19 +1002,29 @@ export const ExamPage: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL 1: SUBMIT EXAM CONFIRMATION MODAL WITH SUMMARY (Answered, Flagged, Unanswered) */}
       <Modal
         open={submitModalOpen}
-        onClose={() => setSubmitModalOpen(false)}
+        onClose={() => {
+          if (!submitAttemptMutation.isPending) setSubmitModalOpen(false);
+        }}
         title="Submit your certification exam?"
         description="Review your question summary below before final grading."
         footer={
           <>
-            <Button variant="ghost" onClick={() => setSubmitModalOpen(false)}>
+            <Button
+              variant="ghost"
+              disabled={submitAttemptMutation.isPending}
+              onClick={() => setSubmitModalOpen(false)}
+            >
               Return to questions
             </Button>
-            <Button variant="primary" onClick={handleFinalizeAndSubmit}>
-              Confirm & submit exam
+            <Button
+              variant="primary"
+              loading={submitAttemptMutation.isPending}
+              disabled={submitAttemptMutation.isPending}
+              onClick={() => void handleFinalizeAndSubmit()}
+            >
+              {submitAttemptMutation.isPending ? 'Grading exam...' : 'Confirm & submit exam'}
             </Button>
           </>
         }
@@ -1008,8 +1056,8 @@ export const ExamPage: React.FC = () => {
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
                 You still have <strong>{summaryCounts.unanswered} unanswered</strong> and{' '}
-                <strong>{summaryCounts.flagged} flagged</strong> questions. Unanswered
-                questions are scored as 0 points.
+                <strong>{summaryCounts.flagged} flagged</strong> questions. Unanswered questions
+                are scored as 0 points.
               </span>
             </div>
           )}
@@ -1021,12 +1069,11 @@ export const ExamPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* MODAL 2: LEAVE-PAGE WARNING MODAL */}
       <Modal
         open={leaveModalOpen}
         onClose={() => setLeaveModalOpen(false)}
-        title="Leave active exam session?"
-        description="Your progress is autosaved, but the exam timer continues to run."
+        title="Leave active exam view?"
+        description="Your progress is autosaved on the server while the timer remains active."
         footer={
           <>
             <Button variant="primary" onClick={() => setLeaveModalOpen(false)}>
@@ -1035,8 +1082,9 @@ export const ExamPage: React.FC = () => {
             <Button
               variant="danger"
               onClick={() => {
+                void flushAutosave();
                 setLeaveModalOpen(false);
-                setPhase('intro');
+                navigate(`/student/progress/${courseId}`);
               }}
             >
               Leave exam
@@ -1047,22 +1095,29 @@ export const ExamPage: React.FC = () => {
         <div className="flex items-start gap-3 p-4 rounded-[10px] bg-[#FEF2F2] border border-[#DC2626]/30 text-[14px] text-[#1E1B2E]">
           <AlertCircle className="w-5 h-5 text-[#DC2626] shrink-0 mt-0.5" />
           <p>
-            If you leave now, your {summaryCounts.answered} answered questions will remain
-            saved, but your 30-minute timer ({formatTimer(secondsLeft)} left) will keep
-            counting down.
+            If you leave now, your {summaryCounts.answered} answered questions will remain saved,
+            but your {activeDurationMins}-minute timer ({formatTimer(secondsLeft)} left) will keep
+            counting down until expiration.
           </p>
         </div>
       </Modal>
 
-      {/* MODAL 3: TIME-UP AUTO-SUBMIT MODAL */}
       <Modal
         open={timeUpModalOpen}
-        onClose={handleFinalizeAndSubmit}
+        onClose={() => void handleFinalizeAndSubmit()}
         title="Time is up — Exam auto-submitted"
-        description="Your 30-minute exam window has concluded."
+        description={`Your ${activeDurationMins}-minute exam window has concluded.`}
         footer={
-          <Button variant="primary" fullWidth onClick={handleFinalizeAndSubmit}>
-            View graded exam results
+          <Button
+            variant="primary"
+            fullWidth
+            loading={submitAttemptMutation.isPending}
+            disabled={submitAttemptMutation.isPending}
+            onClick={() => void handleFinalizeAndSubmit()}
+          >
+            {submitAttemptMutation.isPending
+              ? 'Finalizing grade...'
+              : 'View graded exam results'}
           </Button>
         }
       >
@@ -1072,8 +1127,8 @@ export const ExamPage: React.FC = () => {
             <div className="text-[14px] text-[#1E1B2E]">
               <p className="font-bold">All autosaved answers have been locked in</p>
               <p className="text-[#5F5B75] mt-0.5">
-                We captured {summaryCounts.answered} of {summaryCounts.total} answered
-                questions before the timer reached 00:00.
+                We captured {summaryCounts.answered} of {summaryCounts.total} answered questions
+                when the timer reached 00:00.
               </p>
             </div>
           </div>
@@ -1087,123 +1142,120 @@ export const ExamPage: React.FC = () => {
 // PART A.3 — EXAM RESULT PAGE (/exam/:courseId/result)
 // ============================================================================
 export const ExamResultPage: React.FC = () => {
-  const { courseId } = useParams<{ courseId: string }>();
+  const { courseId = '' } = useParams<{ courseId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
-  const {
-    courses,
-    examAttempts,
-    lastSubmittedAnswers,
-    completeAllCourseLessons,
-    setCourseExamScore,
-  } = useApp();
-  const { user } = useAuth();
-  const studentFirstName = (user?.name || 'Student').split(' ')[0];
 
-  const course = useMemo(
-    () => courses.find((c) => c.id === courseId) || courses[0],
-    [courses, courseId]
-  );
-  usePageTitle(`${course.title} Exam Results`);
+  const overviewQuery = useCourseExamOverview(courseId);
+  const attemptsQuery = useCourseExamAttempts(courseId);
+  const myCertsQuery = useMyCertificates();
+  const generateCertMutation = useGenerateCertificateMutation();
 
-  // Toggleable Passed (86%) vs Failed (45%) state for reviewing both result banners
-  const [resultModeOverride, setResultModeOverride] = useState<'passed' | 'failed'>('passed');
+  const sortedSubmittedAttempts = useMemo(() => {
+    const raw = attemptsQuery.data?.data ?? [];
+    return [...raw]
+      .filter((a) => a.status !== 'in_progress')
+      .sort((a, b) => b.attemptNumber - a.attemptNumber);
+  }, [attemptsQuery.data]);
+
+  const requestedAttemptId = searchParams.get('attemptId') || undefined;
+  const activeAttemptId = requestedAttemptId ?? sortedSubmittedAttempts[0]?.id;
+  const resultQuery = useExamAttemptResult(activeAttemptId);
+
   const [reviewFilter, setReviewFilter] = useState<'all' | 'correct' | 'wrong' | 'skipped'>(
     'all'
   );
 
-  const isPassed = resultModeOverride === 'passed';
-  const displayScore = isPassed ? 86 : 45;
-  const correctCount = isPassed ? 17 : 9;
-  const wrongCount = isPassed ? 2 : 9;
-  const skippedCount = isPassed ? 1 : 2;
-  const timeTaken = isPassed ? '21m 14s' : '29m 10s';
+  const courseTitle = overviewQuery.data?.config.courseTitle ?? 'Course';
+  usePageTitle(`${courseTitle} Exam Results`);
 
-  const courseAttempts = useMemo(
-    () => examAttempts.filter((a) => a.courseId === course.id),
-    [examAttempts, course.id]
-  );
-  const attemptsUsed = Math.min(3, Math.max(2, courseAttempts.length));
-  const attemptsLeft = Math.max(0, 3 - attemptsUsed);
-
-  // Per-section breakdown bars
-  const sectionBreakdowns = useMemo(() => {
-    if (isPassed) {
-      return [
-        {
-          id: 'sec-1',
-          name: 'Section 1: Modern Foundations',
-          correct: 5,
-          total: 5,
-          percent: 100,
-        },
-        {
-          id: 'sec-2',
-          name: 'Section 2: State, Effects & Custom Hooks',
-          correct: 4,
-          total: 5,
-          percent: 80,
-        },
-        {
-          id: 'sec-3',
-          name: 'Section 3: Data Routing, Performance & A11y',
-          correct: 4,
-          total: 5,
-          percent: 80,
-        },
-        {
-          id: 'sec-4',
-          name: 'Section 4: Testing & Certification Prep',
-          correct: 4,
-          total: 5,
-          percent: 80,
-        },
-      ];
+  const handleOpenCertificate = async () => {
+    if (!courseId || generateCertMutation.isPending) return;
+    const existing = myCertsQuery.data?.data.find((c) => c.course.id === courseId);
+    if (existing) {
+      navigate(`/certificates/${encodeURIComponent(existing.id)}?view=completion`);
+      return;
     }
-    return [
-      { id: 'sec-1', name: 'Section 1: Modern Foundations', correct: 3, total: 5, percent: 60 },
-      {
-        id: 'sec-2',
-        name: 'Section 2: State, Effects & Custom Hooks',
-        correct: 2,
-        total: 5,
-        percent: 40,
-      },
-      {
-        id: 'sec-3',
-        name: 'Section 3: Data Routing, Performance & A11y',
-        correct: 2,
-        total: 5,
-        percent: 40,
-      },
-      {
-        id: 'sec-4',
-        name: 'Section 4: Testing & Certification Prep',
-        correct: 2,
-        total: 5,
-        percent: 40,
-      },
-    ];
-  }, [isPassed]);
+    const issued = await generateCertMutation.mutateAsync({ courseId });
+    navigate(`/certificates/${encodeURIComponent(issued.id)}?view=completion`);
+  };
 
-  // Build question review items comparing user's answer vs correct answer
-  const reviewItems = useMemo(() => {
-    return COURSE_QUESTION_BANK.map((q) => {
-      const userIndices = lastSubmittedAnswers[q.id] || [];
-      const isSkipped = userIndices.length === 0;
-      const isCorrect = !isSkipped && areArraysEqual(userIndices, q.correctIndices);
-      const status: 'correct' | 'wrong' | 'skipped' = isSkipped
-        ? 'skipped'
-        : isCorrect
-        ? 'correct'
-        : 'wrong';
-      return { q, userIndices, status };
-    });
-  }, [lastSubmittedAnswers]);
+  if (!courseId) {
+    return <NotFound404Page />;
+  }
 
-  const filteredReviewItems = useMemo(() => {
-    if (reviewFilter === 'all') return reviewItems;
-    return reviewItems.filter((item) => item.status === reviewFilter);
-  }, [reviewItems, reviewFilter]);
+  if (overviewQuery.isLoading || attemptsQuery.isLoading || (activeAttemptId && resultQuery.isLoading)) {
+    return (
+      <div className="space-y-8 pb-12">
+        <Skeleton variant="text" className="w-72 h-6" />
+        <Skeleton variant="card" className="h-56 rounded-[12px]" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <Skeleton key={idx} variant="card" className="h-24 rounded-[12px]" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <Skeleton variant="card" className="lg:col-span-6 h-64 rounded-[12px]" />
+          <Skeleton variant="card" className="lg:col-span-6 h-64 rounded-[12px]" />
+        </div>
+      </div>
+    );
+  }
+
+  const firstError = overviewQuery.error ?? attemptsQuery.error ?? resultQuery.error;
+  if (firstError) {
+    if (isNotFoundError(firstError)) {
+      return <NotFound404Page />;
+    }
+    if (isForbiddenError(firstError)) {
+      return <Forbidden403Page requiredRoles={['student']} />;
+    }
+    return (
+      <div className="py-10">
+        <QueryErrorState
+          error={firstError}
+          title="Unable to load exam results"
+          onRetry={() => {
+            void overviewQuery.refetch();
+            void attemptsQuery.refetch();
+            if (activeAttemptId) void resultQuery.refetch();
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!activeAttemptId || !resultQuery.data) {
+    return (
+      <div className="space-y-6 pb-12">
+        <Breadcrumbs
+          items={[
+            { label: 'My courses', to: '/student/courses' },
+            { label: courseTitle, to: `/student/progress/${courseId}` },
+            { label: 'Exam result' },
+          ]}
+        />
+        <EmptyState
+          title="No completed exam attempts yet"
+          description="Take and submit your certification exam to view your graded score, per-section accuracy breakdown, and full answer review."
+          actionLabel="Go to final exam"
+          actionTo={`/exam/${courseId}`}
+          mood="empty"
+        />
+      </div>
+    );
+  }
+
+  const view = mapExamAttemptResultDtoToView(resultQuery.data);
+  const attemptsHistory = sortedSubmittedAttempts.map(mapExamAttemptSummaryDtoToRecord);
+  const maxAttempts = overviewQuery.data?.config.attemptsAllowed ?? 3;
+  const totalQuestionsCount = view.reviewItems.length;
+  const isPassed = view.summary.passed;
+
+  const filteredReviewItems =
+    reviewFilter === 'all'
+      ? view.reviewItems
+      : view.reviewItems.filter((item) => item.outcome === reviewFilter);
 
   return (
     <div className="space-y-8 pb-12">
@@ -1211,43 +1263,17 @@ export const ExamResultPage: React.FC = () => {
         <Breadcrumbs
           items={[
             { label: 'My courses', to: '/student/courses' },
-            { label: course.title, to: `/student/progress/${course.id}` },
+            { label: courseTitle, to: `/student/progress/${courseId}` },
             { label: 'Exam result' },
           ]}
         />
 
-        {/* Interactive Passed vs Failed Preview Switcher */}
-        <div className="inline-flex items-center gap-1.5 p-1 rounded-[10px] bg-white border border-[#E6E1F5] shadow-2xs self-start">
-          <span className="text-[11px] font-bold text-[#5F5B75] px-2 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-[#6D4AE0]" />
-            Result state:
-          </span>
-          <button
-            type="button"
-            onClick={() => setResultModeOverride('passed')}
-            className={`px-2.5 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer ${
-              isPassed
-                ? 'bg-[#16A34A] text-white'
-                : 'text-[#5F5B75] hover:text-[#1E1B2E]'
-            }`}
-          >
-            Passed (86%)
-          </button>
-          <button
-            type="button"
-            onClick={() => setResultModeOverride('failed')}
-            className={`px-2.5 py-1 rounded-[7px] text-[12px] font-bold cursor-pointer ${
-              !isPassed
-                ? 'bg-[#DC2626] text-white'
-                : 'text-[#5F5B75] hover:text-[#1E1B2E]'
-            }`}
-          >
-            Failed (45%)
-          </button>
-        </div>
+        <span className="text-[12px] font-bold text-[#5F5B75]">
+          Showing Attempt #{view.summary.attemptNumber} ({view.summary.date})
+        </span>
       </div>
 
-      {/* 1. PASSED / FAILED HERO BANNER + SCORE RING WITH % */}
+      {/* 1. PASSED / FAILED HERO BANNER + SCORE RING */}
       <div
         className={`rounded-[12px] border-2 p-6 sm:p-8 shadow-purple-md flex flex-col lg:flex-row items-center justify-between gap-8 ${
           isPassed
@@ -1256,7 +1282,6 @@ export const ExamResultPage: React.FC = () => {
         }`}
       >
         <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-6 flex-1">
-          {/* Celebration with the circular-cropped cat mascot when passed */}
           {isPassed ? (
             <CatMascot size="lg" mood="success" />
           ) : (
@@ -1270,13 +1295,13 @@ export const ExamResultPage: React.FC = () => {
               <StatusChip
                 label={
                   isPassed
-                    ? 'Passed with Distinction • Certificate unlocked'
-                    : 'Did not pass • 60% required'
+                    ? `Passed • ${view.passingScorePercent}% required`
+                    : `Did not pass • ${view.passingScorePercent}% required`
                 }
                 variant={isPassed ? 'success' : 'danger'}
               />
               <StatusChip
-                label={`Attempt ${attemptsUsed} of 3`}
+                label={`Attempt ${view.attemptsUsed} of ${maxAttempts}`}
                 variant="primary"
                 className="bg-white"
               />
@@ -1284,45 +1309,42 @@ export const ExamResultPage: React.FC = () => {
 
             <h1 className="text-[32px] sm:text-[38px] font-display font-bold text-[#1E1B2E] leading-tight">
               {isPassed
-                ? `Congratulations, ${studentFirstName}! You passed the exam.`
-                : `Keep going, ${studentFirstName} — review and retake when ready.`}
+                ? 'Congratulations! You passed the exam.'
+                : 'Keep going — review and retake when ready.'}
             </h1>
 
             <p className="text-[15px] text-[#5F5B75] max-w-xl leading-relaxed">
               {isPassed
-                ? `You scored ${displayScore}% on the ${course.title} final assessment, exceeding the 60% passing score. Your verified certificate is ready to generate.`
-                : `You scored ${displayScore}%, which is below the 60% passing threshold. Review the color-coded explanations below and use one of your ${attemptsLeft} remaining attempts.`}
+                ? `You scored ${view.summary.scorePercent}% on the ${courseTitle} final assessment, exceeding the ${view.passingScorePercent}% passing score.`
+                : `You scored ${view.summary.scorePercent}%, below the ${view.passingScorePercent}% passing threshold. Review the color-coded explanations below before your next attempt.`}
             </p>
 
-            {/* Primary Action Buttons: "Get certificate" (if passed), "Retake exam" (if attempts left), "Back to course" */}
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 pt-2">
-              {isPassed && (
+              {isPassed && view.certificateEligible && (
                 <Button
                   variant="primary"
                   size="lg"
+                  loading={generateCertMutation.isPending}
+                  disabled={generateCertMutation.isPending}
                   leftIcon={<Award className="w-5 h-5" />}
-                  onClick={() => {
-                    completeAllCourseLessons(course.id);
-                    setCourseExamScore(course.id, 86);
-                    navigate('/certificates/cert-101?view=completion');
-                  }}
+                  onClick={() => void handleOpenCertificate()}
                 >
-                  Get certificate
+                  {generateCertMutation.isPending ? 'Generating certificate...' : 'Get certificate'}
                 </Button>
               )}
 
-              {attemptsLeft > 0 && (
+              {view.attemptsRemaining > 0 && (
                 <Button
                   variant={isPassed ? 'secondary' : 'primary'}
                   size="lg"
                   leftIcon={<RotateCcw className="w-4 h-4" />}
-                  onClick={() => navigate(`/exam/${course.id}`)}
+                  onClick={() => navigate(`/exam/${courseId}`)}
                 >
-                  Retake exam ({attemptsLeft} left)
+                  Retake exam ({view.attemptsRemaining} left)
                 </Button>
               )}
 
-              <Link to={`/student/progress/${course.id}`}>
+              <Link to={`/student/progress/${courseId}`}>
                 <Button variant="ghost" size="lg" className="bg-white border border-[#E6E1F5]">
                   Back to course
                 </Button>
@@ -1331,10 +1353,9 @@ export const ExamResultPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Score Ring with % + Sticker Badge */}
         <div className="flex flex-col items-center gap-4 p-5 rounded-[12px] bg-white border border-[#E6E1F5] shadow-purple-sm shrink-0">
           <ProgressRing
-            value={displayScore}
+            value={view.summary.scorePercent}
             size={120}
             strokeWidth={10}
             label="Final exam score"
@@ -1342,8 +1363,8 @@ export const ExamResultPage: React.FC = () => {
           />
           {isPassed && (
             <AchievementStickerBadge
-              title="Top exam scorer"
-              subtitle="86% Distinction"
+              title={view.summary.scorePercent >= 85 ? 'Top exam scorer' : 'Exam certified'}
+              subtitle={`${view.summary.scorePercent}% Score`}
               color="gold"
             />
           )}
@@ -1356,7 +1377,7 @@ export const ExamResultPage: React.FC = () => {
           <div>
             <p className="text-[13px] font-semibold text-[#5F5B75]">Correct answers</p>
             <p className="font-display font-bold text-[30px] text-[#16A34A] mt-1 leading-none">
-              {correctCount} / 20
+              {view.summary.correctCount} / {totalQuestionsCount}
             </p>
           </div>
           <div className="w-10 h-10 rounded-[10px] bg-[#16A34A]/12 text-[#16A34A] flex items-center justify-center">
@@ -1368,7 +1389,7 @@ export const ExamResultPage: React.FC = () => {
           <div>
             <p className="text-[13px] font-semibold text-[#5F5B75]">Wrong answers</p>
             <p className="font-display font-bold text-[30px] text-[#DC2626] mt-1 leading-none">
-              {wrongCount} / 20
+              {view.summary.wrongCount} / {totalQuestionsCount}
             </p>
           </div>
           <div className="w-10 h-10 rounded-[10px] bg-[#FEF2F2] text-[#DC2626] flex items-center justify-center">
@@ -1380,7 +1401,7 @@ export const ExamResultPage: React.FC = () => {
           <div>
             <p className="text-[13px] font-semibold text-[#5F5B75]">Skipped questions</p>
             <p className="font-display font-bold text-[30px] text-[#B45309] mt-1 leading-none">
-              {skippedCount} / 20
+              {view.summary.skippedCount} / {totalQuestionsCount}
             </p>
           </div>
           <div className="w-10 h-10 rounded-[10px] bg-[#FEF3C7] text-[#B45309] flex items-center justify-center">
@@ -1392,7 +1413,7 @@ export const ExamResultPage: React.FC = () => {
           <div>
             <p className="text-[13px] font-semibold text-[#5F5B75]">Time taken</p>
             <p className="font-display font-bold text-[30px] text-[#1E1B2E] mt-1 leading-none">
-              {timeTaken}
+              {view.summary.timeTaken}
             </p>
           </div>
           <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center">
@@ -1403,7 +1424,6 @@ export const ExamResultPage: React.FC = () => {
 
       {/* 3. PER-SECTION BREAKDOWN BARS & ATTEMPTS HISTORY TABLE */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Per-section breakdown bars */}
         <div className="lg:col-span-6 rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm space-y-5">
           <div>
             <h2 className="text-[22px] font-display font-bold text-[#1E1B2E]">
@@ -1415,7 +1435,7 @@ export const ExamResultPage: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {sectionBreakdowns.map((sec) => (
+            {view.sectionBreakdowns.map((sec) => (
               <div key={sec.id} className="space-y-1.5">
                 <div className="flex items-center justify-between text-[13px]">
                   <span className="font-bold text-[#1E1B2E]">{sec.name}</span>
@@ -1428,11 +1448,7 @@ export const ExamResultPage: React.FC = () => {
                   showValue={false}
                   size="md"
                   color={
-                    sec.percent >= 80
-                      ? 'success'
-                      : sec.percent >= 60
-                      ? 'primary'
-                      : 'danger'
+                    sec.percent >= 80 ? 'success' : sec.percent >= 60 ? 'primary' : 'danger'
                   }
                 />
               </div>
@@ -1440,7 +1456,6 @@ export const ExamResultPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Attempts history table */}
         <div className="lg:col-span-6 rounded-[12px] bg-white border border-[#E6E1F5] p-6 shadow-purple-sm space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1448,10 +1463,10 @@ export const ExamResultPage: React.FC = () => {
                 Attempts history
               </h2>
               <p className="text-[13px] text-[#5F5B75]">
-                Maximum 3 attempts allowed • Highest score counts
+                Maximum {maxAttempts} attempts allowed • Click a row to inspect
               </p>
             </div>
-            <StatusChip label={`${attemptsUsed}/3 used`} variant="primary" />
+            <StatusChip label={`${view.attemptsUsed}/${maxAttempts} used`} variant="primary" />
           </div>
 
           <div className="overflow-x-auto rounded-[10px] border border-[#E6E1F5]">
@@ -1466,31 +1481,40 @@ export const ExamResultPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E6E1F5]">
-                {courseAttempts.map((att) => (
-                  <tr key={att.id} className="hover:bg-[#FAF8FF]">
-                    <td className="py-3 px-3.5 font-bold text-[#1E1B2E]">
-                      #{att.attemptNumber}
-                    </td>
-                    <td className="py-3 px-3.5 text-[#5F5B75]">{att.date}</td>
-                    <td className="py-3 px-3.5 font-display font-bold text-[16px] text-[#1E1B2E]">
-                      {att.scorePercent}%
-                    </td>
-                    <td className="py-3 px-3.5 text-[#5F5B75]">{att.timeTaken}</td>
-                    <td className="py-3 px-3.5 text-right">
-                      <StatusChip
-                        label={att.passed ? 'Passed' : 'Failed'}
-                        variant={att.passed ? 'success' : 'danger'}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {attemptsHistory.map((att) => {
+                  const isActiveRow = att.id === view.summary.id;
+                  return (
+                    <tr
+                      key={att.id}
+                      onClick={() => setSearchParams({ attemptId: att.id }, { replace: true })}
+                      className={`cursor-pointer transition-colors ${
+                        isActiveRow ? 'bg-[#F3EFFF]/65' : 'hover:bg-[#FAF8FF]'
+                      }`}
+                    >
+                      <td className="py-3 px-3.5 font-bold text-[#1E1B2E]">
+                        #{att.attemptNumber}
+                      </td>
+                      <td className="py-3 px-3.5 text-[#5F5B75]">{att.date}</td>
+                      <td className="py-3 px-3.5 font-display font-bold text-[16px] text-[#1E1B2E]">
+                        {att.scorePercent}%
+                      </td>
+                      <td className="py-3 px-3.5 text-[#5F5B75]">{att.timeTaken}</td>
+                      <td className="py-3 px-3.5 text-right">
+                        <StatusChip
+                          label={att.passed ? 'Passed' : 'Failed'}
+                          variant={att.passed ? 'success' : 'danger'}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* 4. REVIEW ANSWERS LIST (Your answer vs Correct answer with explanation, color-coded) */}
+      {/* 4. REVIEW ANSWERS LIST */}
       <div className="rounded-[12px] bg-white border border-[#E6E1F5] p-6 sm:p-8 shadow-purple-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E6E1F5] pb-4">
           <div>
@@ -1505,18 +1529,18 @@ export const ExamResultPage: React.FC = () => {
           <div className="inline-flex flex-wrap items-center gap-1.5 p-1 rounded-[10px] bg-[#FAF8FF] border border-[#E6E1F5]">
             {(
               [
-                { id: 'all', label: `All (${reviewItems.length})` },
+                { id: 'all', label: `All (${view.reviewItems.length})` },
                 {
                   id: 'correct',
-                  label: `Correct (${reviewItems.filter((i) => i.status === 'correct').length})`,
+                  label: `Correct (${view.reviewItems.filter((i) => i.outcome === 'correct').length})`,
                 },
                 {
                   id: 'wrong',
-                  label: `Wrong (${reviewItems.filter((i) => i.status === 'wrong').length})`,
+                  label: `Wrong (${view.reviewItems.filter((i) => i.outcome === 'wrong').length})`,
                 },
                 {
                   id: 'skipped',
-                  label: `Skipped (${reviewItems.filter((i) => i.status === 'skipped').length})`,
+                  label: `Skipped (${view.reviewItems.filter((i) => i.outcome === 'skipped').length})`,
                 },
               ] as const
             ).map((f) => (
@@ -1537,66 +1561,67 @@ export const ExamResultPage: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          {filteredReviewItems.map(({ q, userIndices, status }) => {
+          {filteredReviewItems.map((item) => {
             const borderStyles =
-              status === 'correct'
+              item.outcome === 'correct'
                 ? 'border-[#16A34A]/40 bg-[#16A34A]/4'
-                : status === 'wrong'
-                ? 'border-[#DC2626]/40 bg-[#FEF2F2]/40'
-                : 'border-[#F59E0B]/40 bg-[#FFFBEB]/40';
+                : item.outcome === 'wrong'
+                  ? 'border-[#DC2626]/40 bg-[#FEF2F2]/40'
+                  : 'border-[#F59E0B]/40 bg-[#FFFBEB]/40';
 
             const userAnswerLabels =
-              userIndices.length > 0
-                ? userIndices.map((idx) => q.options[idx]).join(' • ')
+              item.selectedIndices.length > 0
+                ? item.selectedIndices
+                    .map((idx) => item.options[idx] ?? `Option ${idx + 1}`)
+                    .join(' • ')
                 : 'No answer selected (Skipped)';
 
-            const correctAnswerLabels = q.correctIndices
-              .map((idx) => q.options[idx])
+            const correctAnswerLabels = item.correctIndices
+              .map((idx) => item.options[idx] ?? `Option ${idx + 1}`)
               .join(' • ');
 
             return (
               <div
-                key={q.id}
+                key={item.id}
                 className={`rounded-[12px] border-2 p-5 space-y-3.5 ${borderStyles}`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-display font-bold text-[16px] text-[#1E1B2E]">
-                      Question {q.number}
+                      Question {item.number}
                     </span>
-                    <span className="text-[12px] text-[#5F5B75]">• {q.sectionName}</span>
+                    <span className="text-[12px] text-[#5F5B75]">• {item.sectionName}</span>
                   </div>
                   <StatusChip
                     label={
-                      status === 'correct'
-                        ? 'Correct (+5 pts)'
-                        : status === 'wrong'
-                        ? 'Incorrect (0 pts)'
-                        : 'Skipped (0 pts)'
+                      item.outcome === 'correct'
+                        ? `Correct (+${item.pointsAwarded} pts)`
+                        : item.outcome === 'wrong'
+                          ? 'Incorrect (0 pts)'
+                          : 'Skipped (0 pts)'
                     }
                     variant={
-                      status === 'correct'
+                      item.outcome === 'correct'
                         ? 'success'
-                        : status === 'wrong'
-                        ? 'danger'
-                        : 'warning'
+                        : item.outcome === 'wrong'
+                          ? 'danger'
+                          : 'warning'
                     }
                   />
                 </div>
 
                 <h3 className="font-display font-bold text-[18px] text-[#1E1B2E]">
-                  {q.question}
+                  {item.question}
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[13px]">
-                  {/* Your answer box */}
                   <div
                     className={`p-3.5 rounded-[10px] border ${
-                      status === 'correct'
+                      item.outcome === 'correct'
                         ? 'bg-white border-[#16A34A]/40 text-[#16A34A]'
-                        : status === 'wrong'
-                        ? 'bg-white border-[#DC2626]/40 text-[#DC2626]'
-                        : 'bg-white border-[#F59E0B]/40 text-[#B45309]'
+                        : item.outcome === 'wrong'
+                          ? 'bg-white border-[#DC2626]/40 text-[#DC2626]'
+                          : 'bg-white border-[#F59E0B]/40 text-[#B45309]'
                     }`}
                   >
                     <p className="text-[11px] font-bold uppercase tracking-wider opacity-80">
@@ -1605,19 +1630,16 @@ export const ExamResultPage: React.FC = () => {
                     <p className="font-bold text-[#1E1B2E] mt-1">{userAnswerLabels}</p>
                   </div>
 
-                  {/* Correct answer box */}
-                  <div className="p-3.5 rounded-[10px] bg-white border border-[#16A34A]/40">
+                  <div className="p-3.5 rounded-[10px] border bg-white border-[#16A34A]/40">
                     <p className="text-[11px] font-bold uppercase tracking-wider text-[#16A34A]">
-                      Correct answer
+                      Official correct answer
                     </p>
                     <p className="font-bold text-[#1E1B2E] mt-1">{correctAnswerLabels}</p>
                   </div>
                 </div>
 
-                {/* Explanation */}
-                <div className="p-3.5 rounded-[10px] bg-white/90 border border-[#E6E1F5] text-[13px] text-[#5F5B75]">
-                  <strong className="text-[#6D4AE0]">Explanation: </strong>
-                  {q.explanation}
+                <div className="p-3.5 rounded-[10px] bg-white border border-[#E6E1F5] text-[13px] text-[#5F5B75]">
+                  <strong className="text-[#1E1B2E]">Explanation:</strong> {item.explanation}
                 </div>
               </div>
             );
