@@ -1,5 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { useAuth } from './AuthContext';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { subscribeToasts, type ToastPayload } from '../lib/toastBus';
 import {
   COURSES,
@@ -7,14 +6,12 @@ import {
   EXAMS,
   EXAM_QUESTIONS,
   CERTIFICATES,
-  NOTIFICATIONS,
   MODERATION_REPORTS,
   type Course,
   type Category,
   type ExamConfig,
   type ExamQuestion,
   type CertificateRecord,
-  type NotificationItem,
   type ModerationReport,
 } from '../data/mockData';
 
@@ -40,11 +37,6 @@ interface AppContextValue {
   setQuestions: React.Dispatch<React.SetStateAction<ExamQuestion[]>>;
   certificates: CertificateRecord[];
   setCertificates: React.Dispatch<React.SetStateAction<CertificateRecord[]>>;
-  notifications: NotificationItem[];
-  markNotificationRead: (id: string) => void;
-  toggleNotificationRead: (id: string) => void;
-  deleteNotification: (id: string) => void;
-  markAllNotificationsRead: () => void;
   reports: ModerationReport[];
   setReports: React.Dispatch<React.SetStateAction<ModerationReport[]>>;
   searchQuery: string;
@@ -57,14 +49,12 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { role } = useAuth();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [courses, setCourses] = useState<Course[]>(COURSES);
   const [categories, setCategories] = useState<Category[]>(CATEGORIES);
   const [exams, setExams] = useState<ExamConfig[]>(EXAMS);
   const [questions, setQuestions] = useState<ExamQuestion[]>(EXAM_QUESTIONS);
   const [certificates, setCertificates] = useState<CertificateRecord[]>(CERTIFICATES);
-  const [allNotifications, setAllNotifications] = useState<NotificationItem[]>(NOTIFICATIONS);
   const [reports, setReports] = useState<ModerationReport[]>(MODERATION_REPORTS);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -82,35 +72,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return subscribeToasts(addToast);
   }, [addToast]);
 
-  const notifications = useMemo(
-    () =>
-      role === 'guest'
-        ? []
-        : allNotifications.filter((n) => !n.roles || n.roles.includes(role)),
-    [allNotifications, role]
-  );
-
-  const markNotificationRead = useCallback((id: string) => {
-    setAllNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  }, []);
-
-  const toggleNotificationRead = useCallback((id: string) => {
-    setAllNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n))
-    );
-  }, []);
-
-  const deleteNotification = useCallback((id: string) => {
-    setAllNotifications((prev) => prev.filter((n) => n.id !== id));
-  }, []);
-
-  const markAllNotificationsRead = useCallback(() => {
-    if (role === 'guest') return;
-    setAllNotifications((prev) =>
-      prev.map((n) => (!n.roles || n.roles.includes(role) ? { ...n, read: true } : n))
-    );
-  }, [role]);
-
   return (
     <AppContext.Provider
       value={{
@@ -126,11 +87,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setQuestions,
         certificates,
         setCertificates,
-        notifications,
-        markNotificationRead,
-        toggleNotificationRead,
-        deleteNotification,
-        markAllNotificationsRead,
         reports,
         setReports,
         searchQuery,

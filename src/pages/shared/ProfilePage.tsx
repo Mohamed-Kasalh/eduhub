@@ -31,68 +31,46 @@ import {
   Breadcrumbs,
   Button,
   ConfirmDialog,
+  EmptyState,
   FileDropzone,
   FormErrorItem,
   FormErrorSummary,
   Modal,
   PasswordInput,
   PasswordStrengthChecklist,
+  QueryErrorState,
+  Skeleton,
   StatusChip,
   Tabs,
   TextInput,
   TextareaInput,
   evaluatePassword,
 } from '../../components/ui';
-import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
+import type {
   NotificationPreferenceKey,
   NotificationPreferenceMap,
   UserProfile,
-} from '../../data/mockData';
+} from '../../api/dto-types-bridge';
+import { getErrorMessage, isApiError } from '../../api/errors';
+import { usePublicConfig } from '../../api/hooks/useCatalog';
+import {
+  useChangePasswordMutation,
+  useDeleteAccountMutation,
+  useMySessions,
+  useRevokeAllOtherSessionsMutation,
+  useRevokeSessionMutation,
+  useUpdateMeMutation,
+  useUpdateNotificationPreferencesMutation,
+  useUploadFileMutation,
+} from '../../api/hooks/useProfileAndNotifications';
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  toNullableTrimmed,
+  type ActiveSessionView,
+} from '../../api/mappers';
 
 type AvatarUploadState = 'idle' | 'uploading' | 'success' | 'error';
-
-interface ActiveSession {
-  id: string;
-  device: string;
-  deviceType: 'desktop' | 'mobile' | 'tablet';
-  browser: string;
-  location: string;
-  lastActive: string;
-  isCurrent: boolean;
-}
-
-const INITIAL_SESSIONS: ActiveSession[] = [
-  {
-    id: 'sess-1',
-    device: 'MacBook Pro 14"',
-    deviceType: 'desktop',
-    browser: 'Chrome 131 on macOS',
-    location: 'Cairo, Egypt',
-    lastActive: 'Active now',
-    isCurrent: true,
-  },
-  {
-    id: 'sess-2',
-    device: 'iPhone 15 Pro',
-    deviceType: 'mobile',
-    browser: 'Safari Mobile 18',
-    location: 'Cairo, Egypt',
-    lastActive: '2 hours ago',
-    isCurrent: false,
-  },
-  {
-    id: 'sess-3',
-    device: 'iPad Air (M2)',
-    deviceType: 'tablet',
-    browser: 'Safari on iPadOS',
-    location: 'Alexandria, Egypt',
-    lastActive: '3 days ago',
-    isCurrent: false,
-  },
-];
 
 const NOTIFICATION_ROWS: Array<{
   key: NotificationPreferenceKey;
@@ -141,11 +119,49 @@ function isValidOptionalUrl(raw: string): boolean {
   }
 }
 
+async function exportCanvasToJpegBlob(canvas: HTMLCanvasElement, quality = 0.9): Promise<Blob> {
+  const blob = await new Promise<Blob | null>((resolve) => {
+    if (typeof canvas.toBlob === 'function') {
+      canvas.toBlob(resolve, 'image/jpeg', quality);
+    } else {
+      resolve(null);
+    }
+  });
+  if (blob) return blob;
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+function buildApiFieldErrorResult(
+  fieldErrors: Record<string, string[]> | undefined,
+  descriptorMap: Record<string, { fieldKey: string; label: string; targetId: string }>
+): { errors: FormErrorItem[]; fieldMap: Record<string, string> } {
+  const errors: FormErrorItem[] = [];
+  const fieldMap: Record<string, string> = {};
+  if (!fieldErrors) return { errors, fieldMap };
+
+  for (const [rawKey, messages] of Object.entries(fieldErrors)) {
+    const firstMsg = messages?.[0];
+    if (!firstMsg) continue;
+    const normalizedKey = rawKey.includes('.') ? rawKey.split('.').pop() || rawKey : rawKey;
+    const meta = descriptorMap[rawKey] ?? descriptorMap[normalizedKey];
+    if (meta) {
+      fieldMap[meta.fieldKey] = firstMsg;
+      errors.push({ field: meta.label, message: firstMsg, targetId: meta.targetId });
+    } else {
+      errors.push({ field: normalizedKey, message: firstMsg, targetId: Object.values(descriptorMap)[0]?.targetId ?? '' });
+    }
+  }
+  return { errors, fieldMap };
+}
+
 export const ProfilePage: React.FC = () => {
-  const { courses, addToast } = useApp();
-  const { role, user: authUser, clearAuthSession } = useAuth();
+  const { role, user: authUser, rawUser, clearAuthSession } = useAuth();
   const navigate = useNavigate();
-  const [profileOverride, setProfileOverride] = useState<Partial<UserProfile>>({});
+  const publicConfigQuery = usePublicConfig();
+  const maxAvatarBytes = publicConfigQuery.data?.uploadLimits.avatarMaxBytes ?? MAX_AVATAR_BYTES;
+  const maxAvatarMbLabel = `${Math.max(1, Math.round(maxAvatarBytes / (1024 * 1024)))} MB`;
 
   const user: UserProfile = {
     id: '',
@@ -158,14 +174,19 @@ export const ProfilePage: React.FC = () => {
     joinedAt: '',
     status: 'Active',
     ...authUser,
-    ...profileOverride,
-  };
-  const updateCurrentUser = (patch: Partial<UserProfile>) => {
-    setProfileOverride((prev) => ({ ...prev, ...patch }));
   };
   const isInstructor = role === 'instructor';
 
   const [activeTab, setActiveTab] = useState<string>('profile');
+
+  const sessionsQuery = useMySessions(activeTab === 'security');
+  const updateMeMutation = useUpdateMeMutation();
+  const changePasswordMutation = useChangePasswordMutation();
+  const revokeSessionMutation = useRevokeSessionMutation();
+  const revokeAllSessionsMutation = useRevokeAllOtherSessionsMutation();
+  const deleteAccountMutation = useDeleteAccountMutation();
+  const updateNotifPrefsMutation = useUpdateNotificationPreferencesMutation();
+  const uploadFileMutation = useUploadFileMutation();
 
   // Profile tab form state
   const [name, setName] = useState(user.name);
@@ -187,8 +208,7 @@ export const ProfilePage: React.FC = () => {
   const [passwordFieldErrors, setPasswordFieldErrors] = useState<Record<string, string>>({});
   const [passwordSummaryKey, setPasswordSummaryKey] = useState(0);
 
-  const [sessions, setSessions] = useState<ActiveSession[]>(INITIAL_SESSIONS);
-  const [sessionToEnd, setSessionToEnd] = useState<ActiveSession | null>(null);
+  const [sessionToEnd, setSessionToEnd] = useState<ActiveSessionView | null>(null);
   const [endAllSessionsOpen, setEndAllSessionsOpen] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
 
@@ -219,7 +239,6 @@ export const ProfilePage: React.FC = () => {
   const [cropOffset, setCropOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragStartRef = useRef<{ x: number; y: number; origX: number; origY: number } | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const uploadTimerRef = useRef<number | null>(null);
   const bypassBlockerRef = useRef(false);
 
   // Re-sync form state when role or user changes
@@ -260,15 +279,6 @@ export const ProfilePage: React.FC = () => {
       setActiveTab('profile');
     }
   }, [isInstructor, activeTab]);
-
-  // Clean up upload timers on unmount
-  useEffect(() => {
-    return () => {
-      if (uploadTimerRef.current !== null) {
-        window.clearInterval(uploadTimerRef.current);
-      }
-    };
-  }, []);
 
   const isProfileDirty = useMemo(() => {
     return (
@@ -360,10 +370,6 @@ export const ProfilePage: React.FC = () => {
   }, [loadedImage, cropZoom, cropOffset, drawCroppedImage]);
 
   const resetAvatarModal = () => {
-    if (uploadTimerRef.current !== null) {
-      window.clearInterval(uploadTimerRef.current);
-      uploadTimerRef.current = null;
-    }
     setAvatarState('idle');
     setAvatarProgress(0);
     setAvatarError('');
@@ -379,6 +385,7 @@ export const ProfilePage: React.FC = () => {
   };
 
   const handleCloseAvatarModal = () => {
+    if (avatarState === 'uploading') return;
     resetAvatarModal();
     setAvatarModalOpen(false);
   };
@@ -395,12 +402,12 @@ export const ProfilePage: React.FC = () => {
       );
       return;
     }
-    if (file.size > MAX_AVATAR_BYTES) {
+    if (file.size > maxAvatarBytes) {
       setLoadedImage(null);
       setPickedFileName(null);
       setAvatarState('error');
       setAvatarError(
-        `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Maximum allowed size is 2 MB.`
+        `"${file.name}" is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Maximum allowed size is ${maxAvatarMbLabel}.`
       );
       return;
     }
@@ -430,10 +437,11 @@ export const ProfilePage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSaveAvatar = () => {
+  const handleSaveAvatar = async () => {
     if (!loadedImage || avatarState === 'uploading') return;
     setAvatarState('uploading');
-    setAvatarProgress(15);
+    setAvatarProgress(10);
+    setAvatarError('');
 
     const exportCanvas = document.createElement('canvas');
     drawCroppedImage(
@@ -444,38 +452,50 @@ export const ProfilePage: React.FC = () => {
       cropOffset,
       false
     );
-    const jpegDataUrl = exportCanvas.toDataURL('image/jpeg', 0.9);
 
-    let progress = 15;
-    uploadTimerRef.current = window.setInterval(() => {
-      progress = Math.min(100, progress + 25);
-      setAvatarProgress(progress);
-      if (progress >= 100) {
-        if (uploadTimerRef.current !== null) {
-          window.clearInterval(uploadTimerRef.current);
-          uploadTimerRef.current = null;
-        }
-        setAvatarState('success');
-        updateCurrentUser({ avatar: jpegDataUrl });
-        addToast({
-          title: 'Profile photo updated',
-          message: 'Your new 256×256 avatar is live across your workspace.',
-          variant: 'success',
-        });
-        setAvatarModalOpen(false);
-        resetAvatarModal();
-      }
-    }, 90);
+    try {
+      const blob = await exportCanvasToJpegBlob(exportCanvas, 0.9);
+      const baseName = (pickedFileName ?? 'avatar').replace(/\.[^.]+$/, '');
+      const exportFileName = `${baseName}.jpg`;
+      const jpegFile = new File([blob], exportFileName, { type: 'image/jpeg' });
+
+      const uploaded = await uploadFileMutation.mutateAsync({
+        file: jpegFile,
+        kind: 'avatar',
+        filename: exportFileName,
+        onProgress: (ev) => {
+          setAvatarProgress(Math.max(15, Math.min(90, ev.percent)));
+        },
+      });
+
+      setAvatarProgress(95);
+      await updateMeMutation.mutateAsync({
+        payload: { avatarUrl: uploaded.url },
+        successTitle: 'Profile photo updated',
+        successMessage: 'Your new 256×256 avatar is live across your workspace.',
+      });
+      setAvatarProgress(100);
+      setAvatarState('success');
+      resetAvatarModal();
+      setAvatarModalOpen(false);
+    } catch (err) {
+      setAvatarState('error');
+      setAvatarError(getErrorMessage(err, 'Unable to upload photo. Please try again.'));
+    }
   };
 
-  const handleRemoveAvatar = () => {
-    updateCurrentUser({ avatar: '' });
-    addToast({
-      title: 'Profile photo removed',
-      message: 'Your initials avatar is now shown.',
-      variant: 'info',
-    });
-    handleCloseAvatarModal();
+  const handleRemoveAvatar = async () => {
+    try {
+      await updateMeMutation.mutateAsync({
+        payload: { avatarUrl: null },
+        successTitle: 'Profile photo removed',
+        successMessage: 'Your initials avatar is now shown.',
+      });
+      resetAvatarModal();
+      setAvatarModalOpen(false);
+    } catch {
+      // Danger toast already shown by mutation.
+    }
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -507,8 +527,9 @@ export const ProfilePage: React.FC = () => {
   };
 
   // Save Profile Tab
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (updateMeMutation.isPending) return;
     const errors: FormErrorItem[] = [];
     const fieldMap: Record<string, string> = {};
 
@@ -556,27 +577,44 @@ export const ProfilePage: React.FC = () => {
       return;
     }
 
-    updateCurrentUser({
-      name: name.trim(),
-      title: headline.trim(),
-      phone: phone.trim(),
-      bio: bio.trim(),
-      links: {
-        website: website.trim(),
-        linkedin: linkedin.trim(),
-        github: github.trim(),
-      },
-    });
-    addToast({
-      title: 'Profile changes saved',
-      message: 'Your name, bio, and profile links have been updated.',
-      variant: 'success',
-    });
+    try {
+      await updateMeMutation.mutateAsync({
+        payload: {
+          name: name.trim(),
+          title: headline.trim(),
+          phone: toNullableTrimmed(phone),
+          bio: bio.trim(),
+          links: {
+            website: toNullableTrimmed(website),
+            linkedin: toNullableTrimmed(linkedin),
+            github: toNullableTrimmed(github),
+          },
+        },
+        successTitle: 'Profile changes saved',
+        successMessage: 'Your name, bio, and profile links have been updated.',
+      });
+    } catch (err) {
+      if (isApiError(err) && err.status === 422 && err.fieldErrors) {
+        const mapped = buildApiFieldErrorResult(err.fieldErrors, {
+          name: { fieldKey: 'name', label: 'Full name', targetId: 'profile-name' },
+          title: { fieldKey: 'headline', label: 'Headline', targetId: 'profile-headline' },
+          phone: { fieldKey: 'phone', label: 'Phone', targetId: 'profile-phone' },
+          bio: { fieldKey: 'bio', label: 'Bio', targetId: 'profile-bio' },
+          website: { fieldKey: 'website', label: 'Website', targetId: 'profile-website' },
+          linkedin: { fieldKey: 'linkedin', label: 'LinkedIn', targetId: 'profile-linkedin' },
+          github: { fieldKey: 'github', label: 'GitHub', targetId: 'profile-github' },
+        });
+        setProfileFieldErrors(mapped.fieldMap);
+        setProfileErrors(mapped.errors);
+        setProfileSummaryKey((k) => k + 1);
+      }
+    }
   };
 
   // Save Security Password
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (changePasswordMutation.isPending) return;
     const errors: FormErrorItem[] = [];
     const fieldMap: Record<string, string> = {};
 
@@ -596,7 +634,7 @@ export const ProfilePage: React.FC = () => {
       fieldMap.newPassword = msg;
       errors.push({ field: 'New password', message: msg, targetId: 'sec-new-password' });
     } else if (!pwEval.isStrongEnough) {
-      const msg = 'New password is too weak. Meet at least 3 rules including 8+ characters.';
+      const msg = 'New password is too weak. Meet all password requirements below.';
       fieldMap.newPassword = msg;
       errors.push({ field: 'New password', message: msg, targetId: 'sec-new-password' });
     } else if (currentPassword && newPassword === currentPassword) {
@@ -631,58 +669,78 @@ export const ProfilePage: React.FC = () => {
       return;
     }
 
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    addToast({
-      title: 'Password updated',
-      message: 'Your account password has been changed successfully.',
-      variant: 'success',
-    });
+    try {
+      await changePasswordMutation.mutateAsync({
+        currentPassword,
+        newPassword,
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordFieldErrors({});
+      setPasswordErrors([]);
+    } catch (err) {
+      if (isApiError(err) && err.status === 422 && err.fieldErrors) {
+        const mapped = buildApiFieldErrorResult(err.fieldErrors, {
+          currentPassword: {
+            fieldKey: 'currentPassword',
+            label: 'Current password',
+            targetId: 'sec-current-password',
+          },
+          newPassword: {
+            fieldKey: 'newPassword',
+            label: 'New password',
+            targetId: 'sec-new-password',
+          },
+        });
+        setPasswordFieldErrors(mapped.fieldMap);
+        setPasswordErrors(mapped.errors);
+        setPasswordSummaryKey((k) => k + 1);
+      }
+    }
   };
 
-  const handleConfirmEndSession = () => {
-    if (!sessionToEnd) return;
-    setSessions((prev) => prev.filter((s) => s.id !== sessionToEnd.id));
-    addToast({
-      title: 'Session logged out',
-      message: `Signed out from ${sessionToEnd.device} (${sessionToEnd.browser}).`,
-      variant: 'info',
-    });
-    setSessionToEnd(null);
+  const handleConfirmEndSession = async () => {
+    if (!sessionToEnd || revokeSessionMutation.isPending) return;
+    try {
+      await revokeSessionMutation.mutateAsync({
+        sessionId: sessionToEnd.id,
+        device: sessionToEnd.device,
+        browser: sessionToEnd.browser,
+      });
+      setSessionToEnd(null);
+    } catch {
+      // Danger toast emitted by mutation.
+    }
   };
 
-  const handleConfirmEndAllOtherSessions = () => {
-    const otherCount = sessions.filter((s) => !s.isCurrent).length;
-    setSessions((prev) => prev.filter((s) => s.isCurrent));
-    setEndAllSessionsOpen(false);
-    addToast({
-      title: `Signed out of ${otherCount} other ${otherCount === 1 ? 'device' : 'devices'}`,
-      message: 'Only this device remains active.',
-      variant: 'success',
-    });
+  const handleConfirmEndAllOtherSessions = async () => {
+    if (revokeAllSessionsMutation.isPending) return;
+    try {
+      await revokeAllSessionsMutation.mutateAsync({ otherCount: otherSessionsCount });
+      setEndAllSessionsOpen(false);
+    } catch {
+      // Danger toast emitted by mutation.
+    }
   };
 
-  const handleConfirmDeleteAccount = () => {
-    bypassBlockerRef.current = true;
-    setDeleteAccountOpen(false);
-    addToast({
-      title: 'Account deleted',
-      message: 'Your account has been removed from this session.',
-      variant: 'danger',
-    });
-    clearAuthSession();
-    navigate('/');
+  const handleConfirmDeleteAccount = async () => {
+    if (deleteAccountMutation.isPending) return;
+    try {
+      await deleteAccountMutation.mutateAsync({ confirmationText: 'DELETE' });
+      bypassBlockerRef.current = true;
+      setDeleteAccountOpen(false);
+      clearAuthSession();
+      navigate('/');
+    } catch {
+      // Danger toast emitted by mutation.
+    }
   };
 
   // Save Notification Preferences
   const handleSaveNotificationPrefs = () => {
-    updateCurrentUser({ notificationPreferences: notifPrefs });
-    addToast({
-      title: 'Notification preferences saved',
-      message: 'Your in-app and email alert settings are up to date.',
-      variant: 'success',
-    });
+    if (updateNotifPrefsMutation.isPending) return;
+    updateNotifPrefsMutation.mutate(notifPrefs);
   };
 
   // Instructor Public Profile Save
@@ -697,8 +755,9 @@ export const ProfilePage: React.FC = () => {
     setNewExpertiseTag('');
   };
 
-  const handleSavePublicProfile = (e: React.FormEvent) => {
+  const handleSavePublicProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (updateMeMutation.isPending) return;
     const errors: FormErrorItem[] = [];
     if (!publicHeadline.trim() || publicHeadline.trim().length < 3) {
       errors.push({
@@ -742,27 +801,37 @@ export const ProfilePage: React.FC = () => {
       return;
     }
 
-    updateCurrentUser({
-      title: publicHeadline.trim(),
-      bio: publicBio.trim(),
-      expertiseTags,
-      links: {
-        website: publicWebsite.trim(),
-        linkedin: publicLinkedin.trim(),
-        github: publicGithub.trim(),
-      },
-    });
-    addToast({
-      title: 'Public instructor profile updated',
-      message: 'Students will see your updated bio, tags, and links on course pages.',
-      variant: 'success',
-    });
+    try {
+      await updateMeMutation.mutateAsync({
+        payload: {
+          title: publicHeadline.trim(),
+          bio: publicBio.trim(),
+          expertiseTags,
+          links: {
+            website: toNullableTrimmed(publicWebsite),
+            linkedin: toNullableTrimmed(publicLinkedin),
+            github: toNullableTrimmed(publicGithub),
+          },
+        },
+        successTitle: 'Public instructor profile updated',
+        successMessage: 'Students will see your updated bio, tags, and links on course pages.',
+      });
+    } catch (err) {
+      if (isApiError(err) && err.status === 422 && err.fieldErrors) {
+        const mapped = buildApiFieldErrorResult(err.fieldErrors, {
+          title: { fieldKey: 'title', label: 'Public headline', targetId: 'pub-headline' },
+          bio: { fieldKey: 'bio', label: 'Public bio', targetId: 'pub-bio' },
+          website: { fieldKey: 'website', label: 'Website', targetId: 'pub-website' },
+          linkedin: { fieldKey: 'linkedin', label: 'LinkedIn', targetId: 'pub-linkedin' },
+          github: { fieldKey: 'github', label: 'GitHub', targetId: 'pub-github' },
+        });
+        setPublicErrors(mapped.errors);
+        setPublicSummaryKey((k) => k + 1);
+      }
+    }
   };
 
-  const instructorCoursesCount = useMemo(
-    () => courses.filter((c) => c.instructorId === user.id || c.instructorName === user.name).length,
-    [courses, user.id, user.name]
-  );
+  const instructorCoursesCount = rawUser?.coursesCount ?? 0;
 
   const tabs = [
     { id: 'profile', label: 'Profile' },
@@ -771,6 +840,7 @@ export const ProfilePage: React.FC = () => {
     ...(isInstructor ? [{ id: 'public-profile', label: 'Public profile' }] : []),
   ];
 
+  const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
   const otherSessionsCount = sessions.filter((s) => !s.isCurrent).length;
 
   return (
@@ -989,6 +1059,7 @@ export const ProfilePage: React.FC = () => {
               <Button
                 type="button"
                 variant="ghost"
+                disabled={updateMeMutation.isPending}
                 onClick={() => {
                   setName(user.name);
                   setHeadline(user.title);
@@ -1004,7 +1075,12 @@ export const ProfilePage: React.FC = () => {
                 Discard changes
               </Button>
             )}
-            <Button type="submit" variant="primary" disabled={!isProfileDirty}>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={updateMeMutation.isPending}
+              disabled={!isProfileDirty || updateMeMutation.isPending}
+            >
               Save changes
             </Button>
           </div>
@@ -1086,7 +1162,12 @@ export const ProfilePage: React.FC = () => {
             <PasswordStrengthChecklist password={newPassword} />
 
             <div className="flex justify-end">
-              <Button type="submit" variant="primary">
+              <Button
+                type="submit"
+                variant="primary"
+                loading={changePasswordMutation.isPending}
+                disabled={changePasswordMutation.isPending}
+              >
                 Update password
               </Button>
             </div>
@@ -1106,7 +1187,8 @@ export const ProfilePage: React.FC = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={otherSessionsCount === 0}
+                loading={revokeAllSessionsMutation.isPending}
+                disabled={otherSessionsCount === 0 || revokeAllSessionsMutation.isPending}
                 leftIcon={<LogOut className="w-4 h-4" />}
                 onClick={() => setEndAllSessionsOpen(true)}
               >
@@ -1114,57 +1196,80 @@ export const ProfilePage: React.FC = () => {
               </Button>
             </div>
 
-            <div className="divide-y divide-[#E6E1F5]">
-              {sessions.map((sess) => {
-                const DeviceIcon =
-                  sess.deviceType === 'mobile' ? (
-                    <Smartphone className="w-5 h-5" />
-                  ) : sess.deviceType === 'tablet' ? (
-                    <Tablet className="w-5 h-5" />
-                  ) : (
-                    <Laptop className="w-5 h-5" />
-                  );
-                return (
-                  <div
-                    key={sess.id}
-                    className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center shrink-0">
-                        {DeviceIcon}
-                      </div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-display font-bold text-[16px] text-[#1E1B2E]">
-                            {sess.device}
-                          </p>
-                          {sess.isCurrent && (
-                            <StatusChip label="This device" variant="success" />
-                          )}
+            {sessionsQuery.isLoading ? (
+              <div className="space-y-4">
+                <Skeleton variant="text" className="h-14 w-full" />
+                <Skeleton variant="text" className="h-14 w-full" />
+              </div>
+            ) : sessionsQuery.isError ? (
+              <QueryErrorState
+                error={sessionsQuery.error}
+                title="Could not load active sessions"
+                onRetry={() => void sessionsQuery.refetch()}
+              />
+            ) : sessions.length === 0 ? (
+              <EmptyState
+                title="No active sessions found"
+                description="Your current device session details will appear here once active."
+              />
+            ) : (
+              <div className="divide-y divide-[#E6E1F5]">
+                {sessions.map((sess) => {
+                  const DeviceIcon =
+                    sess.deviceType === 'mobile' ? (
+                      <Smartphone className="w-5 h-5" />
+                    ) : sess.deviceType === 'tablet' ? (
+                      <Tablet className="w-5 h-5" />
+                    ) : (
+                      <Laptop className="w-5 h-5" />
+                    );
+                  const isRevokingThis =
+                    revokeSessionMutation.isPending &&
+                    revokeSessionMutation.variables?.sessionId === sess.id;
+                  return (
+                    <div
+                      key={sess.id}
+                      className="py-4 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-10 h-10 rounded-[10px] bg-[#F3EFFF] text-[#6D4AE0] flex items-center justify-center shrink-0">
+                          {DeviceIcon}
                         </div>
-                        <p className="text-[13px] text-[#5F5B75]">
-                          {sess.browser} • {sess.location}
-                        </p>
-                        <p className="text-[12px] text-[#5F5B75]/80 mt-0.5">
-                          Last active: {sess.lastActive}
-                        </p>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-display font-bold text-[16px] text-[#1E1B2E]">
+                              {sess.device}
+                            </p>
+                            {sess.isCurrent && (
+                              <StatusChip label="This device" variant="success" />
+                            )}
+                          </div>
+                          <p className="text-[13px] text-[#5F5B75]">
+                            {sess.browser} • {sess.location}
+                          </p>
+                          <p className="text-[12px] text-[#5F5B75]/80 mt-0.5">
+                            Last active: {sess.lastActive}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    {!sess.isCurrent && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        leftIcon={<LogOut className="w-4 h-4" />}
-                        onClick={() => setSessionToEnd(sess)}
-                      >
-                        Log out
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      {!sess.isCurrent && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          loading={isRevokingThis}
+                          disabled={isRevokingThis || revokeAllSessionsMutation.isPending}
+                          leftIcon={<LogOut className="w-4 h-4" />}
+                          onClick={() => setSessionToEnd(sess)}
+                        >
+                          Log out
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Danger Zone */}
@@ -1282,7 +1387,12 @@ export const ProfilePage: React.FC = () => {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button variant="primary" onClick={handleSaveNotificationPrefs}>
+            <Button
+              variant="primary"
+              loading={updateNotifPrefsMutation.isPending}
+              disabled={updateNotifPrefsMutation.isPending}
+              onClick={handleSaveNotificationPrefs}
+            >
               Save changes
             </Button>
           </div>
@@ -1401,7 +1511,12 @@ export const ProfilePage: React.FC = () => {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button type="submit" variant="primary">
+              <Button
+                type="submit"
+                variant="primary"
+                loading={updateMeMutation.isPending}
+                disabled={updateMeMutation.isPending}
+              >
                 Save changes
               </Button>
             </div>
@@ -1492,14 +1607,15 @@ export const ProfilePage: React.FC = () => {
         open={avatarModalOpen}
         onClose={handleCloseAvatarModal}
         title="Update profile photo"
-        description="Upload a JPG or PNG image (max 2 MB) and adjust your circular crop."
+        description={`Upload a JPG or PNG image (max ${maxAvatarMbLabel}) and adjust your circular crop.`}
         footer={
           <div className="w-full flex flex-wrap items-center justify-between gap-2">
             <Button
               variant="ghost"
               size="sm"
+              loading={updateMeMutation.isPending && avatarState !== 'uploading'}
               onClick={handleRemoveAvatar}
-              disabled={avatarState === 'uploading' || !user.avatar}
+              disabled={avatarState === 'uploading' || updateMeMutation.isPending || !user.avatar}
             >
               Remove photo
             </Button>
@@ -1515,7 +1631,7 @@ export const ProfilePage: React.FC = () => {
                 variant="primary"
                 onClick={handleSaveAvatar}
                 loading={avatarState === 'uploading'}
-                disabled={!loadedImage || avatarState === 'error'}
+                disabled={!loadedImage || avatarState === 'error' || avatarState === 'uploading'}
               >
                 Save photo
               </Button>
@@ -1526,7 +1642,7 @@ export const ProfilePage: React.FC = () => {
         <div className="space-y-5">
           <FileDropzone
             label="Choose a photo"
-            acceptLabel="JPG or PNG up to 2 MB"
+            acceptLabel={`JPG or PNG up to ${maxAvatarMbLabel}`}
             accept="image/jpeg,image/png"
             selectedFileName={pickedFileName}
             loading={avatarState === 'uploading'}
@@ -1613,6 +1729,7 @@ export const ProfilePage: React.FC = () => {
         }
         confirmLabel="Log out session"
         tone="danger"
+        loading={revokeSessionMutation.isPending}
         onConfirm={handleConfirmEndSession}
       />
 
@@ -1623,6 +1740,7 @@ export const ProfilePage: React.FC = () => {
         description="This will immediately sign out every browser and mobile device except the one you are currently using."
         confirmLabel="Log out all others"
         tone="danger"
+        loading={revokeAllSessionsMutation.isPending}
         onConfirm={handleConfirmEndAllOtherSessions}
       />
 
@@ -1633,6 +1751,7 @@ export const ProfilePage: React.FC = () => {
         description="This permanently removes your profile, saved progress, and workspace access. Type DELETE below to confirm."
         confirmLabel="Delete account"
         tone="danger"
+        loading={deleteAccountMutation.isPending}
         requireTypedText="DELETE"
         requireTypedLabel="Type DELETE to confirm permanent deletion"
         onConfirm={handleConfirmDeleteAccount}

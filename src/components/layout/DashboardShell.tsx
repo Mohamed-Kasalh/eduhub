@@ -26,10 +26,15 @@ import {
   Info,
 } from 'lucide-react';
 import { BrandLogo } from '../brand/BrandLogo';
-import { Avatar, SearchInput, StatusChip } from '../ui';
+import { Avatar, QueryErrorState, SearchInput, Skeleton, StatusChip } from '../ui';
 import { useApp } from '../../context/AppContext';
 import { useAuth, useLogoutMutation } from '../../api/hooks/useAuth';
-import type { NotificationItem, UserRole } from '../../data/mockData';
+import {
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+  useNotifications,
+} from '../../api/hooks/useProfileAndNotifications';
+import type { NotificationItem, UserRole } from '../../api/dto-types-bridge';
 import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 function getNotificationIcon(type: NotificationItem['type']) {
@@ -149,19 +154,27 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
   const {
     sidebarCollapsed: collapsed,
     setSidebarCollapsed: setCollapsed,
-    notifications,
-    markNotificationRead,
-    markAllNotificationsRead,
     searchQuery,
     setSearchQuery,
   } = useApp();
-  const { role, user } = useAuth();
+  const { role, user, isAuthenticated } = useAuth();
   const logoutMutation = useLogoutMutation();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const mobileDrawerRef = useDialogA11y(mobileDrawerOpen, () => setMobileDrawerOpen(false));
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
   const [notifTab, setNotifTab] = useState<'all' | 'unread'>('all');
+
+  const allNotifsQuery = useNotifications(
+    { status: 'all', page: 1, limit: 6 },
+    isAuthenticated
+  );
+  const unreadNotifsQuery = useNotifications(
+    { status: 'unread', page: 1, limit: 6 },
+    isAuthenticated && notifPopoverOpen && notifTab === 'unread'
+  );
+  const markReadMutation = useMarkNotificationReadMutation();
+  const markAllReadMutation = useMarkAllNotificationsReadMutation();
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -175,9 +188,10 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
     avatar: '',
   };
   const menuItems = ROLE_MENUS[activeRole];
-  const unreadCount = notifications.filter((n) => !n.read).length;
-  const popoverNotifications =
-    notifTab === 'unread' ? notifications.filter((n) => !n.read) : notifications;
+  const unreadCount = allNotifsQuery.data?.meta.unreadCount ?? 0;
+  const totalNotifCount = allNotifsQuery.data?.meta.total ?? 0;
+  const activeNotifQuery = notifTab === 'unread' ? unreadNotifsQuery : allNotifsQuery;
+  const popoverNotifications = activeNotifQuery.data?.items ?? [];
 
   useEffect(() => {
     setMobileDrawerOpen(false);
@@ -447,11 +461,11 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                     </span>
                     <button
                       type="button"
-                      onClick={markAllNotificationsRead}
-                      disabled={unreadCount === 0}
+                      onClick={() => markAllReadMutation.mutate()}
+                      disabled={unreadCount === 0 || markAllReadMutation.isPending}
                       className="text-[12px] font-semibold text-[#6D4AE0] hover:underline disabled:opacity-45 disabled:pointer-events-none cursor-pointer"
                     >
-                      Mark all as read
+                      {markAllReadMutation.isPending ? 'Marking...' : 'Mark all as read'}
                     </button>
                   </div>
 
@@ -463,7 +477,7 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                   >
                     {(
                       [
-                        { id: 'all', label: `All (${notifications.length})` },
+                        { id: 'all', label: `All (${totalNotifCount})` },
                         { id: 'unread', label: `Unread (${unreadCount})` },
                       ] as const
                     ).map((tab) => {
@@ -488,7 +502,21 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                   </div>
 
                   <div className="divide-y divide-[#E6E1F5] max-h-72 overflow-y-auto">
-                    {popoverNotifications.length === 0 ? (
+                    {activeNotifQuery.isLoading ? (
+                      <div className="p-4 space-y-3">
+                        <Skeleton variant="text" className="h-12 w-full" />
+                        <Skeleton variant="text" className="h-12 w-full" />
+                        <Skeleton variant="text" className="h-12 w-4/5" />
+                      </div>
+                    ) : activeNotifQuery.isError ? (
+                      <div className="p-3">
+                        <QueryErrorState
+                          compact
+                          error={activeNotifQuery.error}
+                          onRetry={() => void activeNotifQuery.refetch()}
+                        />
+                      </div>
+                    ) : popoverNotifications.length === 0 ? (
                       <div className="px-4 py-8 text-center space-y-1">
                         <p className="text-[14px] font-bold text-[#1E1B2E]">
                           {notifTab === 'unread' ? 'No unread notifications' : 'No notifications yet'}
@@ -507,7 +535,9 @@ export const DashboardShell: React.FC<{ children: React.ReactNode }> = ({ childr
                             key={n.id}
                             to={n.link}
                             onClick={() => {
-                              markNotificationRead(n.id);
+                              if (!n.read) {
+                                markReadMutation.mutate(n.id);
+                              }
                               setNotifPopoverOpen(false);
                             }}
                             className={`flex items-start gap-3 px-4 py-3 hover:bg-[#FAF8FF] transition-colors ${
